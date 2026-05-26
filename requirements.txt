@@ -2,8 +2,8 @@
 
 # Step 2 - Embeddings + Vector DB
 sentence-transformers==2.7.0
-faiss-cpu==1.8.0
-numpy>=1.24.0,<2.0
+faiss-cpu>=1.9.0
+numpy>=1.24.0
 
 # Step 3 - LLM Integration
 openai>=1.30.0
@@ -14,6 +14,10 @@ fastapi>=0.110.0
 uvicorn>=0.29.0
 pydantic>=2.0.0
 slowapi>=0.1.9
+
+# Utils
+pyspellchecker>=0.8.0
+rank-bm25>=0.2.0
 
 # Supabase / Auth
 supabase>=2.0.0

@@ -70,4 +70,11 @@ def shape_response(answer: str, confidence: dict, results: list) -> Dict:
             ]
         }
 
-    return {"answer": answer, "confidence": confidence["level"], "sources": [...]}
+    return {
+        "answer": answer,
+        "confidence": confidence["level"],
+        "sources": [
+            {"file_path": r["metadata"]["file_path"], "name": r["metadata"].get("name", ""), "score": round(r.get("score", 0), 3)}
+            for r in results[:3]
+        ]
+    }

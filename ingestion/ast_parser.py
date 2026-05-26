@@ -13,6 +13,7 @@ class ASTChunk:
     decorators: List[str] = field(default_factory=list)
     docstring: Optional[str] = None
     content: str = ""
+    is_async: bool = False
 
 
 def _extract_calls(node) -> List[str]:
@@ -56,7 +57,6 @@ def parse_python_ast(source_code: str, file_path: str) -> List[dict]:
 
     chunks = []
     lines = source_code.split('\n')
-
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             start = node.lineno
@@ -64,13 +64,14 @@ def parse_python_ast(source_code: str, file_path: str) -> List[dict]:
             content = '\n'.join(lines[start-1:end])
             chunk = ASTChunk(
                 name=node.name,
-                kind='async_function' if isinstance(node, ast.AsyncFunctionDef) else 'function',
+                kind='function',
                 start_line=start,
                 end_line=end,
                 calls=_extract_calls(node),
                 decorators=_get_decorators(node),
                 docstring=_get_docstring(node),
-                content=content
+                content=content,
+                is_async=isinstance(node, ast.AsyncFunctionDef)
             )
             chunks.append(chunk)
         elif isinstance(node, ast.ClassDef):
@@ -105,7 +106,7 @@ def parse_python_ast(source_code: str, file_path: str) -> List[dict]:
             "calls": c.calls,
             "decorators": c.decorators,
             "docstring": c.docstring,
-            "is_async": c.kind == 'async_function'
+            "is_async": c.is_async
         }
         result.append({"content": c.content, "metadata": meta})
     return result

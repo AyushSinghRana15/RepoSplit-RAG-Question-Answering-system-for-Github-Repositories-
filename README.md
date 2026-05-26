@@ -92,8 +92,15 @@ python3 main.py --embed
 ```
 
 ### 4. Start Backend API
+Make sure your virtual environment is activated and `.env` is set up:
 ```bash
-uvicorn api.app:app --reload --port 8000
+source venv/bin/activate
+uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
+```
+
+Or run directly with the venv Python:
+```bash
+./venv/bin/uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### 5. Start Frontend

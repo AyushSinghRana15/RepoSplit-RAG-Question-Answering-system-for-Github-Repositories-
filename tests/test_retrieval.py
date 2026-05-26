@@ -28,7 +28,7 @@ def retriever(query: str, top_k: int = 5) -> List[Dict]:
     """
     from embeddings.retriever import retrieve
     results = retrieve(query, top_k=top_k, score_threshold=SCORE_THRESHOLD)
-    return [{"chunk": r["metadata"], "score": r["score"]} for r in results]
+    return [{"chunk": r["metadata"], "score": r["score"]} for r in results if r["score"] <= SCORE_THRESHOLD]
 
 
 def run_retrieval_tests():

@@ -6,11 +6,17 @@ LANGUAGE_MAP = {
     ".py": "python",
     ".js": "javascript",
     ".ts": "typescript",
+    ".jsx": "javascript",
+    ".tsx": "typescript",
     ".java": "java",
-    ".go": "go",
-    ".rb": "ruby",
     ".cpp": "cpp",
     ".c": "c",
+    ".go": "go",
+    ".rs": "rust",
+    ".rb": "ruby",
+    ".php": "php",
+    ".swift": "swift",
+    ".kt": "kotlin",
 }
 
 EXCLUDED_DIRS = {

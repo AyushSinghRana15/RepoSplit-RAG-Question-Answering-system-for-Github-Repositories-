@@ -4,6 +4,10 @@ import time
 import logging
 import json
 from typing import Optional
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from api.middleware import limiter
 
 from api.schemas import (
     QueryRequest,
@@ -36,6 +40,9 @@ app = FastAPI(
     description="Natural language Q&A over code repositories",
     version="1.1.0"
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -134,13 +141,15 @@ def ingest_github(repo_url: str, branch: Optional[str] = None, user=Depends(get_
         if not files:
             raise HTTPException(status_code=400, detail="No supported files found in repository")
 
+        repo_path = os.path.commonpath(files) if files else ""
         all_chunks = []
         for file_path in files:
             ext = os.path.splitext(file_path)[1]
             language = lang_map.get(ext, "text")
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
-            chunks = parse_chunks(file_content=content, file_path=file_path, language=language)
+            rel_path = os.path.relpath(file_path, repo_path) if repo_path else file_path
+            chunks = parse_chunks(file_content=content, file_path=rel_path, language=language)
             all_chunks.extend(chunks)
 
         if not all_chunks:
