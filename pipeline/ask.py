@@ -1,20 +1,15 @@
-from typing import Dict
-from functools import lru_cache
 from typing import Dict, List, Optional
 import time
 import logging
-from urllib import response
 
 from config import *
 from pipeline.reranker import rerank
 from pipeline.query_classifier import classify_query, get_pipeline_config
 from pipeline.hybrid_retriever import hybrid_retrieve
 from llm.generator import generate_answer
-from pipeline.validator import validate_answer
+from pipeline.validator import validate_answer, score_confidence
 from pipeline.query_corrector import correct_query
 from pipeline.reflector import reflect
-from pipeline.validator import validate_answer, score_confidence, shape_response
-from pipeline.query_corrector import correct_query, get_query_suggestions
 from pipeline.query_rewriter import rewrite_query
 from pipeline.language_detector import detect_language
 from pipeline.entity_extractor import extract_entities
@@ -23,21 +18,12 @@ from pipeline.synonym_expander import expand_synonyms
 from pipeline.query_cleaner import clean_query
 from pipeline.multi_query_expander import expand_queries
 from pipeline.context_compressor import compress_results
+from pipeline.context_expander import expand_context
 from pipeline.response_personalizer import personalize_response
 from pipeline.feedback_loop import record_feedback
-from pipeline.language_detector import detect_language
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-
-def normalize_query(q: str) -> str:
-    return q.lower().strip().rstrip("?")
-
-
-@lru_cache(maxsize=CACHE_MAX_SIZE)
-def cached_ask(query: str) -> Dict:
-    return _ask_impl(query)
 
 
 def build_context(results: List[dict]) -> str:
@@ -50,77 +36,6 @@ def build_context(results: List[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def _log_step(step: str, duration: float, details: dict = None):
-    msg = f"[Pipeline] {step} took {duration:.1f}ms"
-    if details:
-        msg += f" | {details}"
-    logger.info(msg)
-
-
-def _ask_impl(query: str) -> Dict:
-    start = time.time()
-    pipeline_steps = {}
-
-    # 1. Classify intent
-    t0 = time.time()
-    intent = classify_query(query) if ENABLE_CLASSIFIER else "general"
-    cfg = get_pipeline_config(intent) if ENABLE_CLASSIFIER else {"top_k": TOP_K_RETRIEVE, "bm25_weight": 0.5, "max_additions": CONTEXT_MAX_ADDITIONS, "num_variations": 1}
-    pipeline_steps["intent_classification"] = round((time.time() - t0) * 1000, 1)
-
-    # 2. Retrieve (hybrid FAISS + BM25)
-    t0 = time.time()
-    results = hybrid_retrieve(query, top_k=cfg["top_k"])
-    pipeline_steps["hybrid_retrieval"] = round((time.time() - t0) * 1000, 1)
-
-    # 3. Rerank
-    t0 = time.time()
-    if ENABLE_RERANKING and len(results) > TOP_K_RERANK:
-        results = rerank(query, results, top_n=TOP_K_RERANK)
-    else:
-        results = results[:TOP_K_RERANK]
-    pipeline_steps["reranking"] = round((time.time() - t0) * 1000, 1)
-
-    # 4. Build context and generate answer
-    context = build_context(results)
-    t0 = time.time()
-    answer = generate_answer(query, results)
-    pipeline_steps["llm_generation"] = round((time.time() - t0) * 1000, 1)
-
-    # 5. Validate
-    t0 = time.time()
-    validation = validate_answer(answer, results)
-    pipeline_steps["validation"] = round((time.time() - t0) * 1000, 1)
-
-    # 6. Build sources
-    sources = [
-        {
-            "file_path": r["metadata"]["file_path"],
-            "name": r["metadata"].get("name", ""),
-            "score": round(r.get("score", 0), 3),
-            "rerank_score": round(r.get("rerank_score", 0), 3) if r.get("rerank_score") else None
-        }
-        for r in results[:5]
-    ]
-
-    total = round((time.time() - start) * 1000, 1)
-
-    response = {
-        "answer": answer,
-        "sources": sources,
-        "retrieved_count": len(results),
-        "validation": validation,
-        "rewritten_query": None,
-        "corrected_query": None,
-        "original_query": query,
-        "entities": {},
-        "language": {"natural_language": "en", "programming_language": None},
-        "intent": intent,
-        "pipeline_steps": pipeline_steps,
-        "latency_ms": total,
-    }
-    return response
-
-
 def ask(
     query: str,
     top_k: int = 10,
@@ -131,17 +46,6 @@ def ask(
     """
     start = time.time()
 
-    # Easter egg: Ayush Singh mention
-    #Full 18-stage RAG pipeline:
-    #Language Detection → Spell Correction → Intent Detection → Entity Extraction → Context Awareness
-    #→ Synonym Expansion → Query Cleaning → LLM Rewrite → Multi Query Expansion → Hybrid Search
-    #→ Reranking → Context Compression → LLM Response → Fact Checking → Response Personalization
-    #→ Caching & Feedback Loop
-    """
-    pipeline_start = time.time()
-    pipeline_timings: Dict[str, float] = {}
-    pipeline_log: Dict[str, dict] = {}
-    """
     # ── Easter egg ────────────────────────────────────────────
     if "ayush" in query.lower():
         return {
@@ -163,12 +67,10 @@ def ask(
     # ═══════════════════════════════════════════════════════════
     # STAGE 1: Language Detection
     # ═══════════════════════════════════════════════════════════
-    pipeline_log = {}
     pipeline_timings = {}
     t0 = time.time()
     lang_info = detect_language(query) if ENABLE_LANGUAGE_DETECTION else {"natural_language": "en", "programming_language": None}
     pipeline_timings["language_detection"] = round((time.time() - t0) * 1000, 1)
-    pipeline_log["language"] = lang_info
 
     # ═══════════════════════════════════════════════════════════
     # STAGE 2: Spell Correction
@@ -181,18 +83,7 @@ def ask(
     if was_corrected:
         print(f"[Query Correction] '{query}' → '{corrected_query}'")
         query = corrected_query
-
-    # Classify intent
-    intent = classify_query(query) if ENABLE_CLASSIFIER else "general"
-    cfg = get_pipeline_config(intent) if ENABLE_CLASSIFIER else {"top_k": top_k}
-
-    # Hybrid retrieval (FAISS + BM25)
-    results = hybrid_retrieve(query, top_k=cfg["top_k"])
-
-    if ENABLE_RERANKING and len(results) > TOP_K_RERANK:
-        results = rerank(query, results, top_n=TOP_K_RERANK)
     pipeline_timings["spell_correction"] = round((time.time() - t0) * 1000, 1)
-    pipeline_log["spell_correction"] = {"original": original_query, "corrected": corrected_query, "was_corrected": was_corrected}
 
     # ═══════════════════════════════════════════════════════════
     # STAGE 3: Intent Detection
@@ -201,7 +92,6 @@ def ask(
     intent = classify_query(query) if ENABLE_CLASSIFIER else "general"
     cfg = get_pipeline_config(intent) if ENABLE_CLASSIFIER else {"top_k": TOP_K_RETRIEVE, "bm25_weight": 0.5, "max_additions": CONTEXT_MAX_ADDITIONS, "num_variations": 1}
     pipeline_timings["intent_detection"] = round((time.time() - t0) * 1000, 1)
-    pipeline_log["intent"] = intent
 
     # ═══════════════════════════════════════════════════════════
     # STAGE 4: Entity Extraction
@@ -209,7 +99,6 @@ def ask(
     t0 = time.time()
     entities = extract_entities(query) if ENABLE_ENTITY_EXTRACTION else {}
     pipeline_timings["entity_extraction"] = round((time.time() - t0) * 1000, 1)
-    pipeline_log["entities"] = entities
 
     # ═══════════════════════════════════════════════════════════
     # STAGE 5: Context Awareness (chat history / user profile)
@@ -231,9 +120,9 @@ def ask(
     # STAGE 6: Synonym Expansion
     # ═══════════════════════════════════════════════════════════
     t0 = time.time()
-    synonym_variations = expand_synonyms(query) if ENABLE_SYNONYM_EXPANSION else [query]
+    if ENABLE_SYNONYM_EXPANSION:
+        expand_synonyms(query)
     pipeline_timings["synonym_expansion"] = round((time.time() - t0) * 1000, 1)
-    pipeline_log["synonyms"] = synonym_variations
 
     # ═══════════════════════════════════════════════════════════
     # STAGE 7: Query Cleaning
@@ -243,7 +132,6 @@ def ask(
     if was_cleaned:
         query = cleaned_query
     pipeline_timings["query_cleaning"] = round((time.time() - t0) * 1000, 1)
-    pipeline_log["cleaned"] = was_cleaned
 
     # ═══════════════════════════════════════════════════════════
     # STAGE 8: LLM Rewrite
@@ -257,7 +145,6 @@ def ask(
     else:
         rewritten_query = rewrite_query(query, use_llm=False)
     pipeline_timings["llm_rewrite"] = round((time.time() - t0) * 1000, 1)
-    pipeline_log["rewritten"] = rewritten_query
 
     # ═══════════════════════════════════════════════════════════
     # STAGE 9: Multi Query Expansion
@@ -268,7 +155,6 @@ def ask(
         num_vars = cfg.get("num_variations", MULTI_QUERY_VARIATIONS)
         search_queries = expand_queries(query, use_llm=ENABLE_LLM_REWRITE, num_variations=num_vars)
     pipeline_timings["multi_query_expansion"] = round((time.time() - t0) * 1000, 1)
-    pipeline_log["search_queries"] = search_queries
 
     # ═══════════════════════════════════════════════════════════
     # STAGE 10: Hybrid Search (BM25 + Vector Search)
@@ -285,7 +171,6 @@ def ask(
                 all_results.append(r)
     all_results = all_results[:cfg["top_k"] * 2]
     pipeline_timings["hybrid_search"] = round((time.time() - t0) * 1000, 1)
-    pipeline_log["retrieved_raw"] = len(all_results)
 
     # ═══════════════════════════════════════════════════════════
     # STAGE 11: Reranking Model
@@ -294,12 +179,8 @@ def ask(
     if ENABLE_RERANKING and len(all_results) > TOP_K_RERANK:
         results = rerank(query, all_results, top_n=TOP_K_RERANK)
     else:
-        results = results[:TOP_K_RERANK]
-
-    # Generate answer
         results = all_results[:TOP_K_RERANK]
     pipeline_timings["reranking"] = round((time.time() - t0) * 1000, 1)
-    pipeline_log["reranked"] = len(results)
 
     # ═══════════════════════════════════════════════════════════
     # STAGE 12: Context Expansion (dependency graph)
@@ -325,7 +206,6 @@ def ask(
         if compressed:
             results = compressed
     pipeline_timings["context_compression"] = round((time.time() - t0) * 1000, 1)
-    pipeline_log["compressed"] = len(results)
 
     # ═══════════════════════════════════════════════════════════
     # STAGE 14: LLM Response Generation
@@ -381,11 +261,9 @@ def ask(
         for r in results[:5]
     ]
 
-    result = {
     # ═══════════════════════════════════════════════════════════
     # STAGE 18: Feedback Loop (record pipeline run)
     # ═══════════════════════════════════════════════════════════
-    total_latency = round((time.time() - pipeline_start) * 1000, 1)
     if ENABLE_FEEDBACK_LOOP:
         try:
             record_feedback(
@@ -405,24 +283,18 @@ def ask(
         except Exception:
             pass
 
-    response = {
+    return {
         "answer": answer,
         "sources": sources,
         "retrieved_count": len(results),
         "rewritten_query": rewritten_query,
         "corrected_query": corrected_query if was_corrected else None,
         "original_query": original_query,
-        "validation": validation
-    }
-    result["latency_ms"] = round((time.time() - start) * 1000, 1)
-    return result
-        "original_query": original_query if was_corrected else None,
         "entities": entities,
         "language": lang_info,
         "intent": intent,
         "validation": validation,
         "confidence": confidence,
         "pipeline_steps": pipeline_timings,
-        "latency_ms": total_latency,
+        "latency_ms": round((time.time() - start) * 1000, 1),
     }
-    return response
