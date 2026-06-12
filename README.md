@@ -254,7 +254,7 @@ The project maintains a comprehensive development log in [`documentation.md`](do
 
 ### How to Use the Documentation
 
-- **Understanding architecture:** Read the Step sections in order
+- **Understanding architecture:** Read the Step sections in order and perform the steps 
 - **Debugging a module:** Search for the filename in the Action Log
 - **Reproducing a decision:** Each entry includes the "why" behind changes
 - **Onboarding:** Start with the Project Overview, then follow Steps 1→6
