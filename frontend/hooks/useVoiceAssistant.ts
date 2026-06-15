@@ -149,6 +149,13 @@ export function useVoiceAssistant(): UseVoiceAssistantReturn {
     }
   }, [supported, cleanup, submitQuery, transcript]);
 
+  const stopSpeaking = useCallback(() => {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setVoiceState("idle");
+  }, []);
+
   const toggleVoiceMode = useCallback(() => {
     setIsVoiceMode((prev) => {
       if (prev) {
@@ -194,13 +201,6 @@ export function useVoiceAssistant(): UseVoiceAssistantReturn {
 
       window.speechSynthesis.speak(utterance);
     });
-  }, []);
-
-  const stopSpeaking = useCallback(() => {
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-    }
-    setVoiceState("idle");
   }, []);
 
   const setOnQueryReady = useCallback((fn: ((query: string) => void) | null) => {
