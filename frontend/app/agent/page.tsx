@@ -82,8 +82,9 @@ export default function Home() {
 
         {voice.isVoiceMode && (
           <div className="text-center">
-            <span
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
+            <button
+              onClick={voice.toggleVoiceMode}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-opacity hover:opacity-80 cursor-pointer"
               style={{
                 background: voice.voiceState === "listening"
                   ? "rgba(59,130,246,0.1)"
@@ -96,22 +97,23 @@ export default function Home() {
                   ? "#16a34a"
                   : "#ea580c",
               }}
+              title="Click to stop voice mode"
             >
               {voice.voiceState === "listening" && (
                 <>
                   <span className="h-2 w-2 rounded-full bg-[#3b82f6] animate-pulse" />
-                  Listening — speak your query
+                  Listening — tap to stop
                 </>
               )}
               {voice.voiceState === "processing" && "Processing your query..."}
               {voice.voiceState === "speaking" && (
                 <>
                   <span className="h-2 w-2 rounded-full bg-[#16a34a] animate-pulse" />
-                  Speaking answer...
+                  Speaking — tap to stop
                 </>
               )}
-              {voice.voiceState === "idle" && "Voice mode paused"}
-            </span>
+              {voice.voiceState === "idle" && "Voice mode paused — tap to resume"}
+            </button>
           </div>
         )}
 

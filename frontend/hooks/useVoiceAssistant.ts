@@ -153,6 +153,7 @@ export function useVoiceAssistant(): UseVoiceAssistantReturn {
     setIsVoiceMode((prev) => {
       if (prev) {
         stopListening();
+        stopSpeaking();
         setTranscript("");
         setInterimTranscript("");
         setVoiceState("idle");
@@ -164,7 +165,7 @@ export function useVoiceAssistant(): UseVoiceAssistantReturn {
         return true;
       }
     });
-  }, [startListening, stopListening]);
+  }, [startListening, stopListening, stopSpeaking]);
 
   const speak = useCallback((text: string): Promise<void> => {
     return new Promise((resolve) => {
