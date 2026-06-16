@@ -44,6 +44,8 @@ def ingest_github_repo(repo_url: str, branch: Optional[str] = None) -> List[str]
         'data', 'datasets', 'dataset', 'assets', 'static',
         'models', 'checkpoints', 'weights', '.ipynb_checkpoints',
         'dist', 'build', '.tox', '.mypy_cache', '.pytest_cache',
+        '.next', '.turbo', 'out', '.cache', 'coverage', '.vercel',
+        '.serverless_micro', 'public',
     }
 
     skip_extensions = {

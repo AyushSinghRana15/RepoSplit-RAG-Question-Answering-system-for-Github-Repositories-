@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import time
 import logging
 import json
+import asyncio
+import uuid
 from typing import Optional
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -204,32 +206,40 @@ def stats():
     }
 
 
-@app.post("/ingest/github")
-def ingest_github(repo_url: str, branch: Optional[str] = None, user=Depends(get_optional_user)):
+_ingest_tasks: dict = {}
+_executor = None
+
+def get_executor():
+    global _executor
+    if _executor is None:
+        from concurrent.futures import ThreadPoolExecutor
+        _executor = ThreadPoolExecutor(max_workers=1)
+    return _executor
+
+def run_ingest_sync(task_id: str, repo_url: str, branch: Optional[str], user_id: Optional[str]):
+    import os, json, pickle, time
+    from ingestion.chunker import parse_chunks
+    from embeddings.embedder import build_embed_text, EMBED_MODEL, BATCH_SIZE, VECTOR_STORE_DIR
+    import faiss
+    import numpy as np
+
+    lang_map = {
+        ".py": "python", ".js": "javascript", ".ts": "typescript",
+        ".jsx": "javascript", ".tsx": "typescript", ".java": "java",
+        ".cpp": "cpp", ".c": "c", ".go": "go", ".rs": "rust",
+        ".rb": "ruby", ".php": "php", ".swift": "swift", ".kt": "kotlin",
+        ".md": "markdown", ".txt": "text",
+    }
+
     try:
-        import json
-        import os
-        from ingestion.chunker import parse_chunks
-        from embeddings.embedder import build_embed_text, EMBED_MODEL, BATCH_SIZE, VECTOR_STORE_DIR
-        import faiss
-        import numpy as np
-        import pickle
-        import time
-
-        CHUNKS_PATH = os.path.join(PROJECT_ROOT, "output", "chunks.json")
-
-        lang_map = {
-            ".py": "python", ".js": "javascript", ".ts": "typescript",
-            ".jsx": "javascript", ".tsx": "typescript", ".java": "java",
-            ".cpp": "cpp", ".c": "c", ".go": "go", ".rs": "rust",
-            ".rb": "ruby", ".php": "php", ".swift": "swift", ".kt": "kotlin",
-            ".md": "markdown", ".txt": "text",
-        }
+        _ingest_tasks[task_id] = {"status": "cloning", "repo_url": repo_url}
 
         files = ingest_github_repo(repo_url, branch)
         if not files:
-            raise HTTPException(status_code=400, detail="No supported files found in repository")
+            _ingest_tasks[task_id] = {"status": "error", "error": "No supported files found in repository"}
+            return
 
+        _ingest_tasks[task_id] = {"status": "chunking", "file_count": len(files)}
         repo_path = os.path.commonpath(files) if files else ""
         all_chunks = []
         for file_path in files:
@@ -242,15 +252,17 @@ def ingest_github(repo_url: str, branch: Optional[str] = None, user=Depends(get_
             all_chunks.extend(chunks)
 
         if not all_chunks:
-            raise HTTPException(status_code=400, detail="No chunks generated from repository")
+            _ingest_tasks[task_id] = {"status": "error", "error": "No chunks generated from repository"}
+            return
 
+        CHUNKS_PATH = os.path.join(PROJECT_ROOT, "output", "chunks.json")
         os.makedirs(os.path.dirname(CHUNKS_PATH), exist_ok=True)
         with open(CHUNKS_PATH, "w", encoding="utf-8") as f:
             json.dump(all_chunks, f)
 
         os.makedirs(VECTOR_STORE_DIR, exist_ok=True)
 
-        logger.info(f"Loading model: {EMBED_MODEL}")
+        _ingest_tasks[task_id] = {"status": "embedding", "chunk_count": len(all_chunks)}
         model = get_embed_model()
         texts = [build_embed_text(c) for c in all_chunks]
 
@@ -275,23 +287,39 @@ def ingest_github(repo_url: str, branch: Optional[str] = None, user=Depends(get_
 
         logger.info(f"Indexing complete: {len(all_chunks)} chunks in {elapsed}s")
 
-        if user:
+        if user_id:
             try:
-                save_user_repo(user_id=user.id, repo_url=repo_url)
+                save_user_repo(user_id=user_id, repo_url=repo_url)
             except Exception as e:
                 logger.warning(f"Failed to save user repo: {e}")
 
-        return {
+        _ingest_tasks[task_id] = {
             "status": "success",
             "files_processed": len(files),
             "chunks_created": len(all_chunks),
             "indexing_time_s": elapsed,
-            "repo_url": repo_url
+            "repo_url": repo_url,
         }
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Ingest task failed: {e}", exc_info=True)
+        _ingest_tasks[task_id] = {"status": "error", "error": str(e)}
+
+
+@app.post("/ingest/github")
+async def ingest_github_async(repo_url: str, branch: Optional[str] = None, user=Depends(get_optional_user)):
+    task_id = str(uuid.uuid4())
+    _ingest_tasks[task_id] = {"status": "queued", "repo_url": repo_url}
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(get_executor(), run_ingest_sync, task_id, repo_url, branch, user.id if user else None)
+    return {"task_id": task_id, "status": "queued"}
+
+
+@app.get("/ingest/status/{task_id}")
+def ingest_status(task_id: str):
+    task = _ingest_tasks.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
 
 
 @app.get("/auth/me")

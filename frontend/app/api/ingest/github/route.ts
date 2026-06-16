@@ -3,6 +3,24 @@ import { NextRequest, NextResponse } from "next/server";
 const BACKEND_URL = process.env.BACKEND_URL!;
 const BACKEND_KEY = process.env.BACKEND_API_KEY;
 
+function getHeaders(req: NextRequest): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (BACKEND_KEY) headers["X-API-Key"] = BACKEND_KEY;
+  const authHeader = req.headers.get("authorization");
+  if (authHeader) headers["Authorization"] = authHeader;
+  return headers;
+}
+
+async function proxyToBackend(path: string, req: NextRequest, init?: RequestInit) {
+  const url = `${BACKEND_URL}${path}`;
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json", ...getHeaders(req) },
+    ...init,
+  });
+  const data = await res.json();
+  return NextResponse.json(data, { status: res.status });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -16,15 +34,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (BACKEND_KEY) headers["X-API-Key"] = BACKEND_KEY;
-    const authHeader = req.headers.get("authorization");
-    if (authHeader) headers["Authorization"] = authHeader;
-
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 240000); // 4 min timeout for cloning
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
     try {
       const response = await fetch(
@@ -33,7 +44,7 @@ export async function POST(req: NextRequest) {
         }`,
         {
           method: "POST",
-          headers,
+          headers: { "Content-Type": "application/json", ...getHeaders(req) },
           signal: controller.signal,
         }
       );
@@ -46,8 +57,8 @@ export async function POST(req: NextRequest) {
       clearTimeout(timeout);
       if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
         return NextResponse.json(
-          { error: "GitHub clone timed out after 4 minutes" },
-          { status: 504 }
+          { error: "Backend did not respond within 30s. The task may still be running — check status." },
+          { status: 202 }
         );
       }
       throw fetchErr;
@@ -57,5 +68,18 @@ export async function POST(req: NextRequest) {
       { error: "Internal error" },
       { status: 500 }
     );
+  }
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const taskId = searchParams.get("task_id");
+    if (!taskId) {
+      return NextResponse.json({ error: "task_id is required" }, { status: 400 });
+    }
+    return proxyToBackend(`/ingest/status/${taskId}`, req);
+  } catch {
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

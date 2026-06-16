@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,19 +11,85 @@ interface Props {
   onIngestComplete?: () => void;
 }
 
+type IngestStatus =
+  | { status: "idle" }
+  | { status: "submitting" }
+  | { status: "pending"; taskId: string }
+  | { status: "cloning" }
+  | { status: "chunking"; file_count: number }
+  | { status: "embedding"; chunk_count: number }
+  | { status: "success"; files_processed: number; chunks_created: number }
+  | { status: "error"; error: string };
+
+const STATUS_LABELS: Record<string, string> = {
+  queued: "Queued...",
+  pending: "Starting...",
+  cloning: "Cloning repository...",
+  chunking: "Parsing code files...",
+  embedding: "Generating embeddings...",
+};
+
 export function GitHubIngestor({ onIngestComplete }: Props) {
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ files: number; chunks: number } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<IngestStatus>({ status: "idle" });
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  const startPolling = useCallback((taskId: string) => {
+    stopPolling();
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/ingest/github?task_id=${taskId}`);
+        if (!res.ok) {
+          stopPolling();
+          setState({ status: "error", error: "Failed to check status" });
+          return;
+        }
+        const data = await res.json();
+
+        if (data.status === "success") {
+          stopPolling();
+          setState({
+            status: "success",
+            files_processed: data.files_processed,
+            chunks_created: data.chunks_created,
+          });
+          onIngestComplete?.();
+        } else if (data.status === "error") {
+          stopPolling();
+          setState({ status: "error", error: data.error || "Ingestion failed" });
+        } else {
+          setState((prev) => {
+            if (prev.status !== "success" && prev.status !== "error") {
+              const newState: Record<string, unknown> = { status: data.status };
+              if (data.file_count) newState.file_count = data.file_count;
+              if (data.chunk_count) newState.chunk_count = data.chunk_count;
+              return newState as IngestStatus;
+            }
+            return prev;
+          });
+        }
+      } catch {
+        // ignore polling errors, will retry
+      }
+    }, 2000);
+  }, [onIngestComplete, stopPolling]);
+
+  useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
 
   const handleIngest = async () => {
     if (!repoUrl.trim()) return;
 
-    setLoading(true);
-    setError(null);
-    setResult(null);
+    setState({ status: "submitting" });
 
     try {
       const params = new URLSearchParams({ repo_url: repoUrl });
@@ -50,20 +116,31 @@ export function GitHubIngestor({ onIngestComplete }: Props) {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.detail || "Ingestion failed");
+        setState({ status: "error", error: data.detail || data.error || "Ingestion failed" });
+        return;
       }
 
-      setResult({
-        files: data.files_processed,
-        chunks: data.chunks_created,
-      });
-      onIngestComplete?.();
+      if (data.task_id) {
+        setState({ status: "pending", taskId: data.task_id });
+        startPolling(data.task_id);
+      } else if (data.status === "success") {
+        setState({
+          status: "success",
+          files_processed: data.files_processed,
+          chunks_created: data.chunks_created,
+        });
+        onIngestComplete?.();
+      }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
+      setState({ status: "error", error: err instanceof Error ? err.message : "Unknown error" });
     }
   };
+
+  const statusLabel =
+    state.status === "submitting" ? "Starting..." :
+    state.status !== "idle" && state.status !== "success" && state.status !== "error"
+      ? STATUS_LABELS[state.status] || `Processing...`
+      : null;
 
   return (
     <Card className="w-full border overflow-hidden" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-card)" }}>
@@ -82,29 +159,29 @@ export function GitHubIngestor({ onIngestComplete }: Props) {
             placeholder="https://github.com/username/repo"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
-            disabled={loading}
+            disabled={state.status !== "idle" && state.status !== "error" && state.status !== "success"}
           />
           <div className="flex gap-2">
             <Input
               placeholder="Branch (optional, default: main)"
               value={branch}
               onChange={(e) => setBranch(e.target.value)}
-              disabled={loading}
+              disabled={state.status !== "idle" && state.status !== "error" && state.status !== "success"}
               className="flex-1"
             />
             <Button
               onClick={handleIngest}
-              disabled={loading || !repoUrl.trim()}
+              disabled={!(state.status === "idle" || state.status === "error" || state.status === "success") || !repoUrl.trim()}
               style={{
-                background: loading || !repoUrl.trim()
-                  ? undefined
-                  : "linear-gradient(135deg, #8b5cf6, #3b82f6)",
+                background: (state.status === "idle" || state.status === "error" || state.status === "success") && repoUrl.trim()
+                  ? "linear-gradient(135deg, #8b5cf6, #3b82f6)"
+                  : undefined,
               }}
             >
-              {loading ? (
+              {statusLabel ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Cloning...
+                  {statusLabel}
                 </>
               ) : (
                 "Ingest"
@@ -112,17 +189,17 @@ export function GitHubIngestor({ onIngestComplete }: Props) {
             </Button>
           </div>
 
-          {error && (
+          {state.status === "error" && (
             <div className="flex items-center gap-2 text-sm text-red-500">
               <AlertCircle className="h-4 w-4" />
-              {error}
+              {state.error}
             </div>
           )}
 
-          {result && (
+          {state.status === "success" && (
             <div className="flex items-center gap-2 text-sm text-[#16a34a]">
               <CheckCircle className="h-4 w-4" />
-              Processed {result.files} files, created {result.chunks} chunks
+              Processed {state.files_processed} files, created {state.chunks_created} chunks
             </div>
           )}
         </div>
