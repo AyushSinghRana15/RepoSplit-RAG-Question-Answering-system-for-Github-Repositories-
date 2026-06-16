@@ -207,9 +207,11 @@ def ingest_github(repo_url: str, branch: Optional[str] = None, user=Depends(get_
     with open(status_file, "w") as f:
         json.dump({"status": "queued", "repo_url": repo_url}, f)
 
-    worker = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ingestion", "worker.py")
+    backend_dir = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    worker = os.path.join(backend_dir, "ingestion", "worker.py")
     subprocess.Popen(
         [sys.executable, "-u", worker, task_id, status_file, repo_url, branch or "", str(user.id) if user else ""],
+        cwd=backend_dir,
         close_fds=True,
     )
     return {"task_id": task_id, "status": "queued"}
