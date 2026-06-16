@@ -12,7 +12,7 @@ def clone_github_repo(repo_url: str, branch: Optional[str] = None) -> str:
     """
     temp_dir = tempfile.mkdtemp(prefix="codebase_github_")
 
-    cmd = ["git", "clone", "--depth", "1", "--single-branch", "--filter=blob:none"]
+    cmd = ["git", "clone", "--depth", "1", "--single-branch"]
     if branch:
         cmd.extend(["--branch", branch])
     cmd.extend([repo_url, temp_dir])
@@ -45,7 +45,7 @@ def ingest_github_repo(repo_url: str, branch: Optional[str] = None) -> List[str]
         'models', 'checkpoints', 'weights', '.ipynb_checkpoints',
         'dist', 'build', '.tox', '.mypy_cache', '.pytest_cache',
         '.next', '.turbo', 'out', '.cache', 'coverage', '.vercel',
-        '.serverless_micro', 'public',
+        '.serverless_micro', 'public', 'output', 'vector_store',
     }
 
     skip_extensions = {

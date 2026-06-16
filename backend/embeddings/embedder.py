@@ -10,7 +10,7 @@ import numpy as np
 from config import PROJECT_ROOT
 
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-BATCH_SIZE = 64
+BATCH_SIZE = 16
 VECTOR_STORE_DIR = os.path.join(PROJECT_ROOT, "vector_store")
 CHUNKS_PATH = os.path.join(PROJECT_ROOT, "output", "chunks.json")
 
