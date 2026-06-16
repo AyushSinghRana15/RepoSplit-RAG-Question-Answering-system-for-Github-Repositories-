@@ -3,8 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 import time
 import logging
 import json
-import threading
 import uuid
+import tempfile
+import os
+import sys
+import subprocess
 from typing import Optional
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -75,21 +78,6 @@ app.add_middleware(
 def warm_models():
     global _embed_model, _reranker
 
-    logging.info("Pre-warming embedding model...")
-    try:
-        _embed_model = get_embed_model()
-        logging.info(f"Embedding model '{EMBED_MODEL}' loaded")
-    except Exception as e:
-        logging.warning(f"Failed to pre-warm embedding model: {e}")
-
-    logging.info("Pre-warming reranker model...")
-    try:
-        from sentence_transformers import CrossEncoder
-        _reranker = CrossEncoder(RERANK_MODEL)
-        logging.info(f"Reranker model '{RERANK_MODEL}' loaded")
-    except Exception as e:
-        logging.warning(f"Failed to pre-warm reranker model: {e}")
-
     logging.info("Pre-warming FAISS index...")
     try:
         from embeddings.retriever import get_all_chunks
@@ -117,7 +105,7 @@ def warm_models():
     except Exception as e:
         logging.warning(f"Failed to pre-warm tokenizer: {e}")
 
-    logging.info("All models pre-warmed")
+    logging.info("Models pre-warmed (embedding/reranker load on demand)")
 
 
 @app.get("/health")
@@ -206,123 +194,34 @@ def stats():
     }
 
 
-import threading
+import subprocess
 
-_ingest_tasks: dict = {}
-
-def run_ingest_sync(task_id: str, repo_url: str, branch: Optional[str], user_id: Optional[str]):
-    import os, json, pickle, time
-    from ingestion.chunker import parse_chunks
-    from embeddings.embedder import build_embed_text, EMBED_MODEL, BATCH_SIZE, VECTOR_STORE_DIR
-    import faiss
-    import numpy as np
-
-    lang_map = {
-        ".py": "python", ".js": "javascript", ".ts": "typescript",
-        ".jsx": "javascript", ".tsx": "typescript", ".java": "java",
-        ".cpp": "cpp", ".c": "c", ".go": "go", ".rs": "rust",
-        ".rb": "ruby", ".php": "php", ".swift": "swift", ".kt": "kotlin",
-        ".md": "markdown", ".txt": "text",
-    }
-
-    try:
-        _ingest_tasks[task_id] = {"status": "cloning", "repo_url": repo_url}
-
-        files = ingest_github_repo(repo_url, branch)
-        if not files:
-            _ingest_tasks[task_id] = {"status": "error", "error": "No supported files found in repository"}
-            return
-
-        _ingest_tasks[task_id] = {"status": "chunking", "file_count": len(files)}
-        repo_path = os.path.commonpath(files) if files else ""
-        all_chunks = []
-        for idx, file_path in enumerate(files):
-            ext = os.path.splitext(file_path)[1]
-            language = lang_map.get(ext, "text")
-            try:
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    content = f.read()
-            except Exception as e:
-                logger.warning(f"Failed to read {file_path}: {e}")
-                continue
-            rel_path = os.path.relpath(file_path, repo_path) if repo_path else file_path
-            try:
-                chunks = parse_chunks(file_content=content, file_path=rel_path, language=language)
-            except Exception as e:
-                logger.warning(f"Failed to parse {rel_path}: {e}")
-                continue
-            all_chunks.extend(chunks)
-            _ingest_tasks[task_id] = {"status": "chunking", "file_count": len(files), "current_file": idx + 1, "current_path": rel_path}
-
-        if not all_chunks:
-            _ingest_tasks[task_id] = {"status": "error", "error": "No chunks generated from repository"}
-            return
-
-        CHUNKS_PATH = os.path.join(PROJECT_ROOT, "output", "chunks.json")
-        os.makedirs(os.path.dirname(CHUNKS_PATH), exist_ok=True)
-        with open(CHUNKS_PATH, "w", encoding="utf-8") as f:
-            json.dump(all_chunks, f)
-
-        os.makedirs(VECTOR_STORE_DIR, exist_ok=True)
-
-        _ingest_tasks[task_id] = {"status": "embedding", "chunk_count": len(all_chunks)}
-        model = get_embed_model()
-        texts = [build_embed_text(c) for c in all_chunks]
-
-        logger.info(f"Generating embeddings for {len(texts)} chunks...")
-        start = time.time()
-        embeddings = model.encode(texts, batch_size=BATCH_SIZE, show_progress_bar=False)
-        elapsed = round(time.time() - start, 2)
-
-        embeddings = np.array(embeddings).astype("float32")
-        dim = embeddings.shape[1]
-
-        logger.info(f"Building FAISS index (dim={dim})...")
-        index = faiss.IndexFlatL2(dim)
-        index.add(embeddings)
-
-        faiss_path = os.path.join(VECTOR_STORE_DIR, "code_index.faiss")
-        metadata_path = os.path.join(VECTOR_STORE_DIR, "metadata.pkl")
-
-        faiss.write_index(index, faiss_path)
-        with open(metadata_path, "wb") as f:
-            pickle.dump(all_chunks, f)
-
-        logger.info(f"Indexing complete: {len(all_chunks)} chunks in {elapsed}s")
-
-        if user_id:
-            try:
-                save_user_repo(user_id=user_id, repo_url=repo_url)
-            except Exception as e:
-                logger.warning(f"Failed to save user repo: {e}")
-
-        _ingest_tasks[task_id] = {
-            "status": "success",
-            "files_processed": len(files),
-            "chunks_created": len(all_chunks),
-            "indexing_time_s": elapsed,
-            "repo_url": repo_url,
-        }
-    except Exception as e:
-        logger.error(f"Ingest task failed: {e}", exc_info=True)
-        _ingest_tasks[task_id] = {"status": "error", "error": str(e)}
+INGEST_TMP_DIR = os.path.join(tempfile.gettempdir(), "codebase_ingest")
+os.makedirs(INGEST_TMP_DIR, exist_ok=True)
 
 
 @app.post("/ingest/github")
 def ingest_github(repo_url: str, branch: Optional[str] = None, user=Depends(get_optional_user)):
     task_id = str(uuid.uuid4())
-    _ingest_tasks[task_id] = {"status": "queued", "repo_url": repo_url}
-    t = threading.Thread(target=run_ingest_sync, args=(task_id, repo_url, branch, user.id if user else None), daemon=True)
-    t.start()
+    status_file = os.path.join(INGEST_TMP_DIR, f"{task_id}.json")
+    with open(status_file, "w") as f:
+        json.dump({"status": "queued", "repo_url": repo_url}, f)
+
+    worker = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ingestion", "worker.py")
+    subprocess.Popen(
+        [sys.executable, "-u", worker, task_id, status_file, repo_url, branch or "", str(user.id) if user else ""],
+        close_fds=True,
+    )
     return {"task_id": task_id, "status": "queued"}
 
 
 @app.get("/ingest/status/{task_id}")
 def ingest_status(task_id: str):
-    task = _ingest_tasks.get(task_id)
-    if not task:
+    status_file = os.path.join(INGEST_TMP_DIR, f"{task_id}.json")
+    if not os.path.exists(status_file):
         raise HTTPException(status_code=404, detail="Task not found")
-    return task
+    with open(status_file) as f:
+        return json.load(f)
 
 
 @app.get("/auth/me")
