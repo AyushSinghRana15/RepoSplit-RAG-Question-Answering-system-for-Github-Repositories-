@@ -1,8 +1,6 @@
 import sys
 import json
 import os
-import time
-import gc
 import pickle
 
 def update_status(status_file: str, data: dict):
@@ -19,7 +17,7 @@ def main():
     update_status(status_file, {"status": "cloning", "repo_url": repo_url})
 
     try:
-        from ingestion.github_ingestor import ingest_github_repo
+        from ingestion.github_ingestor import ingest_github_repo, cleanup_repo
         files = ingest_github_repo(repo_url, branch)
     except Exception as e:
         update_status(status_file, {"status": "error", "error": f"Clone failed: {e}"})
@@ -28,6 +26,8 @@ def main():
     if not files:
         update_status(status_file, {"status": "error", "error": "No supported files found in repository"})
         return
+
+    repo_path = os.path.commonpath(files) if files else ""
 
     lang_map = {
         ".py": "python", ".js": "javascript", ".ts": "typescript",
@@ -39,7 +39,6 @@ def main():
 
     update_status(status_file, {"status": "chunking", "file_count": len(files)})
     from ingestion.chunker import parse_chunks
-    repo_path = os.path.commonpath(files) if files else ""
     all_chunks = []
     for idx, file_path in enumerate(files):
         ext = os.path.splitext(file_path)[1]
@@ -57,12 +56,16 @@ def main():
         all_chunks.extend(chunks)
         update_status(status_file, {"status": "chunking", "file_count": len(files), "current_file": idx + 1, "current_path": rel_path})
 
+    try:
+        cleanup_repo(repo_path)
+    except Exception:
+        pass
+
     if not all_chunks:
         update_status(status_file, {"status": "error", "error": "No chunks generated from repository"})
         return
 
     total_chunks = len(all_chunks)
-    update_status(status_file, {"status": "embedding", "chunk_count": total_chunks})
 
     from config import PROJECT_ROOT
     CHUNKS_PATH = os.path.join(PROJECT_ROOT, "output", "chunks.json")
@@ -73,38 +76,14 @@ def main():
     with open(CHUNKS_PATH, "w", encoding="utf-8") as f:
         json.dump(all_chunks, f)
 
-    texts = [f"[{c['metadata']['language']}] {c['metadata']['chunk_type']}: {c['metadata']['name']} in {c['metadata']['file_path']}\n\n{c['content']}" for c in all_chunks]
-
     metadata_path = os.path.join(VECTOR_STORE_DIR, "metadata.pkl")
     with open(metadata_path, "wb") as f:
         pickle.dump(all_chunks, f)
-    del all_chunks
-    gc.collect()
 
-    from sentence_transformers import SentenceTransformer
-    from config import EMBED_MODEL
-    import faiss
-    import numpy as np
-
-    model = SentenceTransformer(EMBED_MODEL)
-    gc.collect()
-
-    start = time.time()
-    embeddings = model.encode(texts, batch_size=16, show_progress_bar=False)
-    elapsed = round(time.time() - start, 2)
-    del texts
-    gc.collect()
-
-    embeddings = np.array(embeddings).astype("float32")
-    dim = embeddings.shape[1]
-
-    index = faiss.IndexFlatL2(dim)
-    index.add(embeddings)
-    del embeddings
-    gc.collect()
-
+    # Remove stale FAISS index so retriever knows to rebuild
     faiss_path = os.path.join(VECTOR_STORE_DIR, "code_index.faiss")
-    faiss.write_index(index, faiss_path)
+    if os.path.exists(faiss_path):
+        os.remove(faiss_path)
 
     if user_id_str:
         try:
@@ -117,7 +96,7 @@ def main():
         "status": "success",
         "files_processed": len(files),
         "chunks_created": total_chunks,
-        "indexing_time_s": elapsed,
+        "indexing_time_s": 0,
         "repo_url": repo_url,
     })
 

@@ -27,7 +27,25 @@ def _load():
     metadata_path = os.path.join(VECTOR_STORE_DIR, "metadata.pkl")
 
     _model = SentenceTransformer(EMBED_MODEL)
-    _index = faiss.read_index(faiss_path)
+
+    if os.path.exists(faiss_path):
+        _index = faiss.read_index(faiss_path)
+    else:
+        # Rebuild FAISS index from chunks (e.g., after fresh ingest)
+        with open(metadata_path, "rb") as f:
+            _metadata = pickle.load(f)
+        chunks = _metadata
+        texts = []
+        for c in chunks:
+            m = c["metadata"]
+            texts.append(f"[{m['language']}] {m['chunk_type']}: {m['name']} in {m['file_path']}\n\n{c['content']}")
+        embeddings = _model.encode(texts, batch_size=16, show_progress_bar=False)
+        embeddings = np.array(embeddings).astype("float32")
+        dim = embeddings.shape[1]
+        _index = faiss.IndexFlatL2(dim)
+        _index.add(embeddings)
+        faiss.write_index(_index, faiss_path)
+
     with open(metadata_path, "rb") as f:
         _metadata = pickle.load(f)
     _chunks = _metadata
