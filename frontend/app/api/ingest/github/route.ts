@@ -71,7 +71,11 @@ export async function POST(req: NextRequest) {
           { status: 202 }
         );
       }
-      throw fetchErr;
+      const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+      return NextResponse.json(
+        { error: `Backend unreachable: ${msg}`, backend_url: (BACKEND_URL || "").replace(/\/\/.*@/, "//***@") },
+        { status: 502 }
+      );
     }
   } catch {
     return NextResponse.json(
