@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import time
 import logging
 import json
-import asyncio
+import threading
 import uuid
 from typing import Optional
 from slowapi import _rate_limit_exceeded_handler
@@ -206,15 +206,9 @@ def stats():
     }
 
 
-_ingest_tasks: dict = {}
-_executor = None
+import threading
 
-def get_executor():
-    global _executor
-    if _executor is None:
-        from concurrent.futures import ThreadPoolExecutor
-        _executor = ThreadPoolExecutor(max_workers=1)
-    return _executor
+_ingest_tasks: dict = {}
 
 def run_ingest_sync(task_id: str, repo_url: str, branch: Optional[str], user_id: Optional[str]):
     import os, json, pickle, time
@@ -306,11 +300,11 @@ def run_ingest_sync(task_id: str, repo_url: str, branch: Optional[str], user_id:
 
 
 @app.post("/ingest/github")
-async def ingest_github_async(repo_url: str, branch: Optional[str] = None, user=Depends(get_optional_user)):
+def ingest_github(repo_url: str, branch: Optional[str] = None, user=Depends(get_optional_user)):
     task_id = str(uuid.uuid4())
     _ingest_tasks[task_id] = {"status": "queued", "repo_url": repo_url}
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(get_executor(), run_ingest_sync, task_id, repo_url, branch, user.id if user else None)
+    t = threading.Thread(target=run_ingest_sync, args=(task_id, repo_url, branch, user.id if user else None), daemon=True)
+    t.start()
     return {"task_id": task_id, "status": "queued"}
 
 
