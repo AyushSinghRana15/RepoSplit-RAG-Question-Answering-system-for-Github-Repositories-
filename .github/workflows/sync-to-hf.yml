@@ -9,25 +9,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          fetch-depth: 0
-      - name: Push backend to HF Space via git
+          python-version: "3.11"
+      - name: Sync to HF Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          if [ -z "$HF_TOKEN" ]; then
-            echo "HF_TOKEN secret not set — skipping sync"
-            exit 0
-          fi
-          git config user.email "github-actions@github.com"
-          git config user.name "GitHub Actions"
-          # Create an orphan branch with only the backend + Dockerfile
-          TMP_DIR=$(mktemp -d)
-          cp -r backend "$TMP_DIR/backend"
-          cp spaces/backend/Dockerfile "$TMP_DIR/Dockerfile"
-          [ -f spaces/backend/.gitignore ] && cp spaces/backend/.gitignore "$TMP_DIR/.gitignore"
-          cd "$TMP_DIR"
-          git init
-          git add -A
-          git commit -m "Sync from GitHub $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          git push --force https://AyushSingh15:$HF_TOKEN@huggingface.co/spaces/AyushSingh15/CodeBase main
+          pip install -q huggingface-hub
+          python3 << 'PYEOF'
+          import os, shutil, tempfile, sys
+          from huggingface_hub import HfApi
+
+          hf_token = os.environ.get("HF_TOKEN", "")
+          if not hf_token:
+              print("HF_TOKEN not set — skipping sync")
+              sys.exit(0)
+
+          tmp = tempfile.mkdtemp()
+          try:
+              shutil.copytree("backend", os.path.join(tmp, "backend"))
+              shutil.copy("spaces/backend/Dockerfile", os.path.join(tmp, "Dockerfile"))
+              if os.path.exists("spaces/backend/.gitignore"):
+                  shutil.copy("spaces/backend/.gitignore", os.path.join(tmp, ".gitignore"))
+
+              api = HfApi(token=hf_token)
+              api.upload_folder(
+                  repo_id="AyushSingh15/CodeBase",
+                  folder_path=tmp,
+                  repo_type="space",
+                  path_in_repo=".",
+                  delete_patterns=["*"],
+              )
+              print("Sync successful")
+          finally:
+              shutil.rmtree(tmp, ignore_errors=True)
+          PYEOF
