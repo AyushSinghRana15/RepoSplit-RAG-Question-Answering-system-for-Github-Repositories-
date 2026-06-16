@@ -72,7 +72,7 @@ def ingest_main(task_id: str, status_file: str, repo_url: str, branch: str | Non
             all_chunks = all_chunks[:MAX_TOTAL_CHUNKS]
             break
 
-        if idx % 50 == 0:
+        if idx % 10 == 0 or idx == 0:
             update_status(status_file, {
                 "status": "chunking",
                 "file_count": len(files),
