@@ -30,6 +30,7 @@ jobs:
           try:
               shutil.copytree("backend", os.path.join(tmp, "backend"))
               shutil.copy("spaces/backend/Dockerfile", os.path.join(tmp, "Dockerfile"))
+              shutil.copy("spaces/backend/README.md", os.path.join(tmp, "README.md"))
               if os.path.exists("spaces/backend/.gitignore"):
                   shutil.copy("spaces/backend/.gitignore", os.path.join(tmp, ".gitignore"))
 
