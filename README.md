@@ -29,7 +29,7 @@ Browser → Next.js Frontend (localhost:3000) → API Proxy → FastAPI Backend 
 | **Reranking** | CrossEncoder (ms-marco-MiniLM-L-6-v2) + MMR diversification |
 | **Query Rewriting** | LLM-based query expansion (OpenRouter) |
 | **LLM** | OpenRouter gpt-oss-120b (free, 32k+ context) |
-| **API** | FastAPI + uvicorn, pre-warmed models at startup |
+| **API** | FastAPI + uvicorn, lazy-loaded models, subprocess ingest worker |
 | **Validation** | Confidence scoring + keyword grounding |
 | **Tokenization** | tiktoken (o200k_harmony) — exact token accounting |
 | **Spell-Check** | pyspellchecker |
@@ -48,7 +48,7 @@ Browser → Next.js Frontend (localhost:3000) → API Proxy → FastAPI Backend 
 - **Context Expansion** — multi-hop reasoning via dependency graph
 - **LLM Generation** — OpenRouter gpt-oss-120b (free), 16k context, 2000 token responses
 - **Validation** — confidence scoring + keyword grounding checks
-- **Pre-Warmed Models** — all models loaded at startup (embedding, reranker, FAISS, BM25, tokenizer)
+- **Lazy Model Loading** — models load on first use; subprocess worker does clone+chunk without loading models
 - **Query Caching** — LRU cache on FAISS retrieval for repeated queries
 - **GitHub Ingestion** — clone and process any GitHub repository
 - **Personalization** — optional Google OAuth (Supabase), query history, user profile
@@ -164,7 +164,8 @@ Target: 41/48 for demo readiness.
 | `/health` | GET | Health check |
 | `/stats` | GET | Index statistics |
 | `/ask` | POST | Ask a question (returns answer + sources) |
-| `/ingest/github` | POST | Clone and ingest GitHub repo |
+| `/ingest/github` | POST | Clone and ingest GitHub repo (async — returns `task_id`, poll `/ingest/status/{task_id}`) |
+| `/ingest/status/{task_id}` | GET | Poll ingest progress / result |
 | `/auth/me` | GET | Get current user profile (auth optional) |
 | `/auth/profile` | PUT | Update profile name/bio (auth required) |
 | `/auth/history` | GET | User query history (auth required) |
@@ -218,6 +219,7 @@ CodeBase AI Assistant/
 │   ├── chunker.py       # AST-based code chunking
 │   ├── ast_parser.py    # Python AST parsing
 │   ├── github_ingestor.py # GitHub repo cloning
+│   ├── worker.py        # Subprocess worker (clone+chunk, no model)
 │   └── utils.py         # File filtering
 ├── graph/                 # Dependency graph
 │   └── dependency_graph.py # Multi-hop reasoning
@@ -253,7 +255,7 @@ CodeBase AI Assistant/
 | **Max Context Tokens** | 16,000 | tiktoken-accurate accounting (o200k_harmony encoding) |
 | **Max FAISS Vectors** | ~50,000 | `IndexFlatL2` is efficient up to ~50k vectors |
 | **Estimated Max Repo Size** | 1–5 GB | Depends on exclusion rules (node_modules, .git, etc.) |
-| **Embedding RAM Usage** | ~2 GB | Model + index loaded in memory |
+| **Embedding RAM Usage** | ~1.5 GB | Model loaded on demand; subprocess isolated from main server |
 | **Concurrent Queries** | 5–10 | Higher concurrency increases latency significantly |
 
 ## Documentation

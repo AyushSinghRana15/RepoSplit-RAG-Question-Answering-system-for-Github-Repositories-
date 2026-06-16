@@ -2695,3 +2695,97 @@ See [EASTER.md](EASTER.md) for all 8 hidden easter eggs sprinkled across the CLI
 ---
 
 **End of Documentation (Updated: 2026-06-14, Part 2 — Voice Assistant)**
+
+---
+
+## Deployment to HF Spaces + Vercel (2026-06-16)
+
+### Context
+Backend deployed as Docker Space on Hugging Face (`AyushSingh15/CodeBase`), frontend on Vercel (`codebase-ai-assistant.vercel.app`). The HF Space git repo is independent from GitHub — updates require direct `git push` to HF.
+
+### Problem 1: Backend 502 / Not Found
+**Symptom:** Frontend shows "Backend not found". Backend health responds but frontend can't reach it.
+
+**Root Cause:** `BACKEND_URL` not set in Vercel env vars.
+
+**Fix:** Set `BACKEND_URL=https://ayushsingh15-codebase.hf.space` in Vercel.
+
+### Problem 2: Model loaded on every request
+**Symptom:** First query takes 8-12s.
+
+**Fix:** Cached `SentenceTransformer` globally via `get_embed_model()` singleton.
+
+### Problem 3: Ingest endpoint timeout (504)
+**Symptom:** `POST /ingest/github` hangs 60s+ then returns 504 (HF proxy timeout).
+
+**Fix:** Return `{task_id, status:"queued"}` immediately, process in background thread. Frontend polls `GET /ingest/status/{task_id}`.
+
+### Problem 4: Container OOM-killed (16Gi limit)
+**Symptom:** Container crashes during startup or ingest. Docker log: `Memory limit exceeded (16Gi)`.
+
+**Root Cause 1:** Pre-warming 2 models (embedding ~500MB + reranker ~500MB) + FAISS + BM25 used 1.5GB+ baseline.
+
+**Fix 1:** Removed embedding/reranker pre-warming from `warm_models()`. Models load lazily on first query. Kept only FAISS, BM25, tokenizer warm-ups.
+
+**Root Cause 2:** Daemon thread crash corrupted main process memory.
+
+**Fix 2:** Replaced `threading.Thread` with `subprocess.Popen`. Ingest runs as separate Python process (`ingestion/worker.py`). Child crash doesn't affect uvicorn.
+
+**Root Cause 3 (attempted):** Even with subprocess, loading SentenceTransformer in child during embedding doubled peak memory. Container OOM-killed during chunking phase.
+
+**Fix 3 (current):** Subprocess only clones + chunks — no model loading. FAISS index built lazily on first query by `retriever._load()` when `code_index.faiss` missing. Model never loads in child process.
+
+### Files Created/Modified
+
+| File | Change |
+|------|--------|
+| `ingestion/worker.py` | NEW — standalone CLI script run via `-m ingestion.worker` |
+| `api/app.py` | Removed `threading` + model pre-warming. Ingest uses `subprocess.Popen`. Status via `/tmp/codebase_ingest/{task_id}.json` |
+| `embeddings/retriever.py` | `_load()` lazily builds FAISS index from `metadata.pkl` if `code_index.faiss` missing |
+| `ingestion/github_ingestor.py` | Removed `--filter=blob:none`, added `output`/`vector_store`/`.next` to `skip_dirs` |
+| `embeddings/embedder.py` | `BATCH_SIZE` 64→16 |
+| `frontend/components/GitHubIngestor.tsx` | Polls status endpoint |
+| `frontend/app/api/ingest/github/route.ts` | GET handler for status proxy |
+
+### Current Architecture (Ingest)
+
+```
+POST /ingest/github?repo_url=...
+  → app.py: return {task_id, status:"queued"} immediately
+  → subprocess.Popen (python3 -m ingestion.worker ...)
+     → git clone --depth 1
+     → chunk all files (no model)
+     → write chunks.json + metadata.pkl
+     → delete stale code_index.faiss
+     → cleanup clone
+     → write success/error to status file
+
+GET /ingest/status/{task_id}
+  → read /tmp/codebase_ingest/{task_id}.json
+
+First query after ingest (/ask):
+  → retriever._load(): code_index.faiss not found
+  → load SentenceTransformer model
+  → encode all chunks from metadata.pkl
+  → build FAISS index
+  → write code_index.faiss
+  → return query results
+```
+
+### Known Issues (2026-06-16)
+1. **Chunking phase OOM:** Worker still causes container restart after ~90s for Codebase-AI-Assistant repo. Smaller repos work. Suspect a specific file triggers regex backtracking or excessive memory allocation.
+2. **Manual HF push:** HF Space repo not synced with GitHub. Requires `git push https://huggingface.co/spaces/AyushSingh15/CodeBase` after each change.
+3. **Status file volatility:** `/tmp/codebase_ingest/` files lost on container restart.
+4. **Slow first query:** Lazy FAISS build blocks first query after ingest.
+5. **No GitHub→HF auto-sync:** Needs manual repo connection in HF Space settings.
+
+### Git Commits (Deployment Session)
+
+| Commit | Message | Date |
+|--------|---------|------|
+| `f127658` | fix: remove blobless clone, add skip_dirs, reduce batch size | 2026-06-16 |
+| `45011dd` | refactor: subprocess-based ingest to prevent OOM; remove model pre-warming | 2026-06-16 |
+| `cd17793` | fix: set subprocess cwd to backend dir | 2026-06-16 |
+| `d96ef04` | fix: run worker as module (-m) for correct import resolution | 2026-06-16 |
+| `2e33f34` | feat: lazy FAISS build on query; worker does clone+chunk only (no model) | 2026-06-16 |
+| `659cb60` | feat: lazy FAISS build on query; worker does clone+chunk only (no model) | 2026-06-16 |
