@@ -132,9 +132,11 @@ def ask_endpoint(
             top_k=request.top_k,
             user_id=user.id if user else None,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Pipeline error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}")
 
     elapsed = round((time.time() - start) * 1000, 1)
     result["latency_ms"] = elapsed

@@ -74,13 +74,19 @@ def _encode_query(query: str) -> np.ndarray:
 @lru_cache(maxsize=CACHE_MAX_SIZE)
 def _cached_retrieve(query: str, top_k: int, score_threshold: float) -> tuple:
     """Tuple-returning version for LRU caching. Returns serializable data."""
+    if _index is None or _index.ntotal == 0:
+        return ()
+
     query_vec = _encode_query(query)
     search_k = max(top_k * 2, 20)
     distances, indices = _index.search(query_vec, search_k)
 
+    if len(distances) == 0 or len(indices) == 0:
+        return ()
+
     all_results = []
     for dist, idx in zip(distances[0], indices[0]):
-        if idx < 0:
+        if idx < 0 or idx >= len(_metadata):
             continue
         chunk = _metadata[idx]
         all_results.append((

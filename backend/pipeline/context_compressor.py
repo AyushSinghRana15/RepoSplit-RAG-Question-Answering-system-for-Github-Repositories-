@@ -35,6 +35,6 @@ def compress_results(
         total_tokens += tok_count
 
     if not compressed and results:
-        compressed = [results[0]]
+        compressed = results[:1]
 
     return compressed

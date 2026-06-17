@@ -83,7 +83,7 @@ def ask(query: str, top_k: int = 10, user_id: str | None = None) -> Dict:
             "score": round(r.get("score", 0), 3),
             "rerank_score": round(r.get("rerank_score", 0), 3) if r.get("rerank_score") else None
         }
-        for r in results[:5]
+        for r in results[:5] if r.get("metadata")
     ]
 
     result = {

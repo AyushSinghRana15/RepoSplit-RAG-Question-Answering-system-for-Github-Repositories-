@@ -44,7 +44,7 @@ def classify_query(query: str) -> str:
         return "general"
 
     best_intents = [i for i, s in scores.items() if s == max_score]
-    return best_intents[0]
+    return best_intents[0] if best_intents else "general"
 
 
 def get_pipeline_config(intent: str) -> Dict:

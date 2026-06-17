@@ -34,7 +34,7 @@ def score_confidence(results: list, answer: str, intent: str) -> Dict:
         return {"level": "low", "score": 0.2, "message": "no_results"}
 
     best_score = min(r["score"] for r in results)   # L2 — lower = better
-    rerank_top = results[0].get("rerank_score", 0)
+    rerank_top = results[0].get("rerank_score", 0) if results else 0
 
     # Map to 0-1 confidence (relaxed threshold for all-MiniLM-L6-v2)
     l2_conf = max(0, 1 - (best_score / 2.5))     # 0 → 1.0, 2.5 → 0.0
