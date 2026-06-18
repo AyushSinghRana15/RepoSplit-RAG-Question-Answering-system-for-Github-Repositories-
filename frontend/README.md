@@ -27,6 +27,7 @@ npm run dev
 | `/` | Marketing landing page |
 | `/agent` | AI Assistant chat interface |
 | `/agent/profile` | User profile page (requires auth) |
+| `/login` | Login / Sign up page with Google OAuth |
 
 ## Environment Variables
 

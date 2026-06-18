@@ -62,6 +62,7 @@ Browser → Next.js Frontend (localhost:3000) → API Proxy → FastAPI Backend 
 - **Loading States** — animated skeleton with rotating status messages
 - **Error Handling** — retry functionality with user-friendly messages
 - **Google OAuth** — optional sign-in, profile management, query history
+- **Login Page** — dedicated `/login` route with animated dark mode UI, sign in/sign up tabs, Google OAuth integration
 
 ## Demo Queries
 
@@ -176,6 +177,10 @@ Target: 41/48 for demo readiness.
 ### Frontend (Next.js - localhost:3000 / [Vercel](https://codebase-ai-assistant.vercel.app))
 | Route | Method | Description |
 |-------|--------|-------------|
+| `/` | GET | Marketing landing page |
+| `/agent` | GET | AI Assistant chat interface |
+| `/agent/profile` | GET | User profile page (auth required) |
+| `/login` | GET | Login / Sign up page with Google OAuth |
 | `/api/ask` | POST | Proxy to backend /ask |
 | `/api/ingest/github` | POST | Proxy to backend /ingest/github |
 | `/api/auth/[...path]` | GET, PUT | Proxy to backend /auth/* |
