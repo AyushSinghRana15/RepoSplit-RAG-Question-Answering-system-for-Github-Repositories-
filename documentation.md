@@ -2859,3 +2859,38 @@ Google OAuth was configured but the frontend had two issues: (1) `AuthContext.si
 | Commit | Message |
 |--------|---------|
 | `HEAD` | fix: add auth-aware Navbar and OAuth error handling |
+
+---
+
+### Session: 2026-06-19 — Auth Tiering: Free RAG + Login-Only Features
+
+#### Context
+Previously all features (RAG, GitHub ingestion, profile) were accessible without login. The goal was to keep core RAG free but require login for GitHub repo ingestion and user-specific data persistence.
+
+#### Changes Made
+
+| # | Change | Files Affected |
+|---|--------|---------------|
+| 1 | **Backend auth enforcement** — `/ingest/github` returns 401 if not authenticated | `backend/api/app.py` |
+| 2 | **GitHubIngestor login gate** — shows sign-in prompt when not logged in | `frontend/components/GitHubIngestor.tsx` |
+| 3 | **Agent page login banner** — subtle banner suggesting sign-in for perks | `frontend/app/agent/page.tsx` |
+| 4 | **README updated** with feature tier table | `README.md` |
+
+#### Feature Tiers
+
+| Tier | Features | Auth Required |
+|------|----------|---------------|
+| **Free** | Ask questions (RAG), voice assistant | No |
+| **Logged in** | Query history, repo tracking, profile management, GitHub ingestion | Google OAuth |
+
+#### Design Decisions
+- **RAG stays free** — `/ask` endpoint and chat UI are fully accessible without auth; user_id is `None` when not logged in
+- **Ingestion requires login** — repos are tracked per-user; without auth there's no way to attribute ingested repos
+- **Subtle upsell** — the agent page shows a dismissible-style banner suggesting login, not a blocking gate
+- **No breaking changes** — existing `/ask` and auth endpoints unchanged; only `/ingest/github` now enforces auth
+
+#### Git Commits
+
+| Commit | Message |
+|--------|---------|
+| `HEAD` | feat: gate GitHub ingestion behind login, keep RAG free |

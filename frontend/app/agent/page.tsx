@@ -8,8 +8,9 @@ import { SourcesPanel } from "@/components/SourcesPanel";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { GitHubIngestor } from "@/components/GitHubIngestor";
 import { useAsk } from "@/hooks/useAsk";
+import { useAuth } from "@/context/AuthContext";
 import { useVoiceAssistant, VoiceState } from "@/hooks/useVoiceAssistant";
-import { AudioLines, Bot, Loader2, Mic, Square, User, Volume2 } from "lucide-react";
+import { AudioLines, Bot, Loader2, Mic, Square, User, Volume2, LogIn } from "lucide-react";
 import { useEffect, useCallback, useRef } from "react";
 import type { ReactNode } from "react";
 
@@ -139,6 +140,7 @@ function VoiceModeStatus({
 
 export default function Home() {
   const { query, setQuery, submittedQuery, result, state, error, submit, reset } = useAsk();
+  const { user, signIn } = useAuth();
   const {
     voiceState,
     isVoiceMode,
@@ -197,6 +199,22 @@ export default function Home() {
       style={{ background: "var(--bg-primary)" }}
     >
       <Header />
+
+      {!user && (
+        <div className="flex justify-center px-4 pt-2">
+          <button
+            onClick={signIn}
+            className="group inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs transition-all hover:opacity-80"
+            style={{ borderColor: "var(--border-subtle)", background: "var(--bg-card)", color: "var(--text-muted)" }}
+          >
+            <LogIn className="h-3.5 w-3.5 text-[#8b5cf6]" />
+            <span>Sign in to save query history, track repos, and personalize your experience</span>
+            <svg className="h-3 w-3 transition-transform group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-1 justify-center">
         <div className="flex min-h-[calc(100vh-3.5rem)] w-full max-w-4xl flex-col px-4 sm:px-6">

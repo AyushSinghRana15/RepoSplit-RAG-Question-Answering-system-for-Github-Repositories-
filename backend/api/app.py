@@ -219,6 +219,8 @@ def _run_ingestion(task_id: str, status_file: str, repo_url: str, branch: str, u
 
 @app.post("/ingest/github")
 def ingest_github(repo_url: str, branch: Optional[str] = None, user=Depends(get_optional_user)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required to ingest repositories")
     task_id = str(uuid.uuid4())
     status_file = os.path.join(INGEST_TMP_DIR, f"{task_id}.json")
     with open(status_file, "w") as f:

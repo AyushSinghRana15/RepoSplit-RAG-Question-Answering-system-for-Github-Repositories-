@@ -104,7 +104,14 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 - Add `https://your-project.supabase.co/auth/v1/callback` to your Google OAuth redirect URIs
 - (Optional) Run `supabase_migration.sql` in Supabase SQL Editor for persistent user data
 
-> Auth is **optional** — everything works without signing in. Google OAuth kicks in automatically when valid Supabase keys are detected.
+> Auth is **optional for core RAG**. Google OAuth kicks in automatically when valid Supabase keys are detected.
+
+**Feature tiers:**
+
+| Tier | Features | Auth Required |
+|------|----------|---------------|
+| **Free** | Ask questions, get code-grounded answers, voice assistant | No |
+| **Logged in** | Query history, ingested repo tracking, profile management, ingest repos | Google OAuth |
 
 > **Vercel deployment:** For Google OAuth to work on Vercel, add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` as **Environment Variables** in your Vercel project settings (Settings → Environment Variables). Also add your Vercel domain to Supabase's allowed redirect URLs and Google Cloud's authorized JavaScript origins.
 
