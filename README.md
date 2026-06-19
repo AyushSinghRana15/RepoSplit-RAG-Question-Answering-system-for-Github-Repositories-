@@ -81,16 +81,30 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Set API Key & Supabase
-Create `.env` and add your keys:
+### 2. Set API Key & Supabase (Google OAuth)
+
+**Backend** — Create `.env` in the project root:
 ```
 OPENAI_API_KEY=sk-or-v1-...
 SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_KEY=your-service-role-key
 ```
+
+**Frontend** — Create `frontend/.env.local`:
+```
+BACKEND_URL=http://localhost:8000
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
 - Get a free OpenRouter key at https://openrouter.ai
-- Create a free Supabase project at https://supabase.com, enable Google OAuth, and run `supabase_migration.sql`
+- Create a free Supabase project at https://supabase.com
+- Enable Google provider in Authentication → Providers (add your Google OAuth Client ID/Secret from https://console.cloud.google.com)
+- Add `https://your-project.supabase.co/auth/v1/callback` to your Google OAuth redirect URIs
+- (Optional) Run `supabase_migration.sql` in Supabase SQL Editor for persistent user data
+
+> Auth is **optional** — everything works without signing in. Google OAuth kicks in automatically when valid Supabase keys are detected.
 
 ### 3. Ingest a Repository (Local)
 ```bash
@@ -207,7 +221,7 @@ Target: 41/48 for demo readiness.
 CodeBase AI Assistant/
 ├── api/                    # FastAPI layer
 │   ├── app.py            # Routes: /ask, /health, /stats, /ingest/github, /auth/*
-│   ├── auth.py           # Supabase JWT verification
+│   ├── auth.py           # Supabase JWT verification (active)
 │   ├── db.py             # Supabase admin client (users, history, repos)
 │   └── schemas.py        # Pydantic request/response models
 ├── pipeline/              # Core RAG pipeline

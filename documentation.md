@@ -2496,7 +2496,7 @@ npm run dev
 
 ---
 
-## Step 7: Google OAuth & Personalization (2026-05-12)
+## Step 7: Google OAuth & Personalization (2026-05-12, finalized 2026-06-19)
 
 ### 7.1 Overview
 
@@ -2507,12 +2507,13 @@ Added optional Google OAuth authentication via Supabase, user profiles, query hi
 - **Auth is optional** — all existing functionality works without signing in
 - **Optional dependency injection** — `get_optional_user` returns `None` if no token, everything degrades gracefully
 - **Proxy pattern** — AuthContext uses lazy Supabase client initialization to avoid build-time errors
+- **Lazy JWT verification** — Backend verifies Supabase JWTs via `supabase.auth.get_user(jwt=token)` using the service_role key; admin client created on first auth check, not at startup
 
-### 7.2 New Files Created
+### 7.2 Files Created
 
 | File | Purpose |
 |------|---------|
-| `api/auth.py` | Supabase JWT verification, optional user dependency |
+| `api/auth.py` | Supabase JWT verification (active), optional user dependency |
 | `api/db.py` | Supabase admin client — users, query_history, user_repos CRUD |
 | `frontend/lib/supabase.ts` | Lazy Supabase client initialization |
 | `frontend/context/AuthContext.tsx` | Auth provider — sign in/out, profile sync, session listener |
@@ -2789,3 +2790,44 @@ First query after ingest (/ask):
 | `d96ef04` | fix: run worker as module (-m) for correct import resolution | 2026-06-16 |
 | `2e33f34` | feat: lazy FAISS build on query; worker does clone+chunk only (no model) | 2026-06-16 |
 | `659cb60` | feat: lazy FAISS build on query; worker does clone+chunk only (no model) | 2026-06-16 |
+
+---
+
+### Session: 2026-06-19 — Backend JWT Verification (Auth Activation)
+
+#### Context
+Google OAuth was implemented earlier (Step 7) but the backend's `get_optional_user` was stubbed — it always returned `None`. This meant the Supabase JWT token sent by the frontend was never verified, and all auth endpoints operated in anonymous mode.
+
+#### Changes Made
+
+| # | Change | Files Affected |
+|---|--------|---------------|
+| 1 | **Implemented JWT verification** via `supabase-py` admin client | `backend/api/auth.py` (rewritten) |
+| 2 | **Added env setup instructions** for Google OAuth / Supabase | `frontend/.env.local`, `frontend/.env.example`, `.env.example` |
+| 3 | **Updated README** with detailed auth setup steps | `README.md` |
+| 4 | **Updated documentation** with this session | `documentation.md` |
+
+#### Implementation Detail (`backend/api/auth.py`)
+
+```python
+def _get_supabase_admin() -> Optional[Client]:
+    # Lazily creates a Supabase admin client using SUPABASE_SERVICE_KEY
+    # Returns None if env vars are missing/placeholder (anonymous fallback)
+
+async def get_optional_user(authorization: Optional[str] = Header(None)):
+    # Extracts Bearer token from Authorization header
+    # Calls supabase.auth.get_user(jwt=token) to verify
+    # Returns supabase User object on success, None on failure
+```
+
+**Key Design Decisions:**
+- **Lazy init** — Supabase admin client created only on first auth check, not at startup
+- **Graceful fallback** — Missing/malformed env vars → `None` (anonymous mode preserved)
+- **Validation** — Garbage/invalid tokens → log warning, return `None`
+- **No breaking changes** — All existing `/auth/*` endpoints continue to work; auth just works now
+
+#### Git Commits
+
+| Commit | Message | Branch |
+|--------|---------|--------|
+| `7bdd0d1` | Implement JWT verification in backend auth via Supabase admin client | `authorization` → `main` |
