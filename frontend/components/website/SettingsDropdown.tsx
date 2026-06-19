@@ -9,6 +9,7 @@ export function SettingsDropdown() {
   const { theme, setTheme } = useTheme();
   const { user, profile, signOut, loading } = useAuth();
   const [open, setOpen] = useState(false);
+  const [themesOpen, setThemesOpen] = useState(false);
   const [toast, setToast] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
@@ -136,11 +137,22 @@ export function SettingsDropdown() {
               </button>
             )}
 
-            <p className="text-xs font-semibold uppercase tracking-wider px-3 py-2" style={{ color: "var(--text-muted)" }}>
-              Theme
-            </p>
+            <button
+              onClick={() => setThemesOpen(!themesOpen)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors hover:opacity-80"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--text-muted)", transform: themesOpen ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                Themes
+              </span>
+              <span className="ml-auto text-xs" style={{ color: "var(--text-muted)" }}>
+                {THEME_CONFIGS.find((t) => t.id === theme)?.label}
+              </span>
+            </button>
 
-            {THEME_CONFIGS.map((t) => (
+            {themesOpen && THEME_CONFIGS.map((t) => (
               <button
                 key={t.id}
                 onClick={() => { setTheme(t.id); setOpen(false); }}
@@ -149,7 +161,7 @@ export function SettingsDropdown() {
                   background: theme === t.id ? "var(--bg-card)" : "transparent",
                 }}
               >
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: t.previewBg, border: `1px solid ${t.previewBorder}` }}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ml-7" style={{ background: t.previewBg, border: `1px solid ${t.previewBorder}` }}>
                   <div className="w-3 h-3 rounded-full" style={{ background: t.previewAccent }} />
                 </div>
                 <div className="flex-1 text-left">
