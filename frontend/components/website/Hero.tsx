@@ -21,7 +21,7 @@ for (const s of segments) {
   cum += s.text.length;
 }
 
-type Phase = "user" | "assistant_label" | "typing" | "citations" | "badges" | "input" | "waiting";
+type Phase = "user" | "typing" | "citations" | "badges" | "input" | "waiting";
 
 export function Hero() {
   const [phase, setPhase] = useState<Phase>("user");
@@ -29,6 +29,12 @@ export function Hero() {
   const [citationShow, setCitationShow] = useState(0);
   const [badgesShow, setBadgesShow] = useState(false);
   const [inputShow, setInputShow] = useState(false);
+
+  useEffect(() => {
+    if (phase !== "user") return;
+    const t = setTimeout(() => setPhase("typing"), 800);
+    return () => clearTimeout(t);
+  }, [phase]);
 
   useEffect(() => {
     if (phase !== "typing") return;
