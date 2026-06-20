@@ -32,7 +32,7 @@ export function Hero() {
 
   useEffect(() => {
     if (phase !== "user") return;
-    const t = setTimeout(() => setPhase("typing"), 800);
+    const t = setTimeout(() => setPhase("typing"), 500);
     return () => clearTimeout(t);
   }, [phase]);
 
@@ -42,7 +42,7 @@ export function Hero() {
       setPhase("citations");
       return;
     }
-    const t = setTimeout(() => setCharIndex((c) => c + 1), 22);
+    const t = setTimeout(() => setCharIndex((c) => c + 1), 8);
     return () => clearTimeout(t);
   }, [phase, charIndex]);
 
