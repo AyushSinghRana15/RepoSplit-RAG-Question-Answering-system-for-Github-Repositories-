@@ -213,7 +213,7 @@ export function Hero() {
                     >
                       Assistant
                     </div>
-                    <div className="text-sm leading-relaxed px-3.5 py-2.5 rounded-xl" style={{ background: "var(--bg-secondary)", color: "var(--text-primary)" }}>
+                    <div className="text-sm leading-relaxed px-3.5 py-2.5 rounded-xl break-words" style={{ background: "var(--bg-secondary)", color: "var(--text-primary)" }}>
                       {phase === "user" ? (
                         <span className="text-[#3b82f6]/40">▊</span>
                       ) : (

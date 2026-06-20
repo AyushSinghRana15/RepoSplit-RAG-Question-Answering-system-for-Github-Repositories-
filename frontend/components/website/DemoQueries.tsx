@@ -77,12 +77,12 @@ export function DemoQueries() {
         </div>
 
         <div className="max-w-4xl mx-auto">
-          <div className="flex gap-1 mb-6 p-1 rounded-xl" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-subtle)" }}>
+          <div className="flex gap-1 mb-6 p-1 rounded-xl overflow-x-auto" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-subtle)" }}>
             {demos.map((demo, i) => (
               <button
                 key={demo.id}
                 onClick={() => setActive(i)}
-                className={`flex-1 px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
+                className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
                   active === i ? "shadow-sm" : ""
                 }`}
                 style={{
@@ -92,7 +92,7 @@ export function DemoQueries() {
                 }}
               >
                 <span className="font-mono text-xs opacity-60 mr-1.5">&gt;</span>
-                {demo.query.length > 28 ? demo.query.slice(0, 28) + "..." : demo.query}
+                {demo.query.length > 22 ? demo.query.slice(0, 22) + "..." : demo.query}
               </button>
             ))}
           </div>
