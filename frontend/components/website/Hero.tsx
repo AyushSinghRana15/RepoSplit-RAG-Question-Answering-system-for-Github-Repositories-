@@ -3,11 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-interface Word {
-  text: string;
-  isCode: boolean;
-}
-
 const segments = [
   { text: "File loading is implemented in ", isCode: false },
   { text: "ingestion/loader.py", isCode: true },
@@ -18,17 +13,16 @@ const segments = [
   { text: " reads each file with encoding error handling.", isCode: false },
 ];
 
-const words: Word[] = segments.flatMap((seg) =>
-  seg.text.split("").map((ch) => ({ text: ch, isCode: seg.isCode }))
-);
-
-const totalWords = words.length;
+const totalChars = segments.reduce((acc, s) => acc + s.text.length, 0);
 
 type Phase = "user" | "typing" | "citations" | "badges" | "input" | "waiting";
 
+const CHARS_PER_TICK = 4;
+const TICK_MS = 25;
+
 export function Hero() {
   const [phase, setPhase] = useState<Phase>("user");
-  const [wordIndex, setWordIndex] = useState(0);
+  const [charIndex, setCharIndex] = useState(0);
   const [citationShow, setCitationShow] = useState(0);
   const [badgesShow, setBadgesShow] = useState(false);
   const [inputShow, setInputShow] = useState(false);
@@ -41,13 +35,13 @@ export function Hero() {
 
   useEffect(() => {
     if (phase !== "typing") return;
-    if (wordIndex >= totalWords) {
+    if (charIndex >= totalChars) {
       setPhase("citations");
       return;
     }
-    const t = setTimeout(() => setWordIndex((c) => c + 1), 3);
+    const t = setTimeout(() => setCharIndex((c) => Math.min(c + CHARS_PER_TICK, totalChars)), TICK_MS);
     return () => clearTimeout(t);
-  }, [phase, wordIndex]);
+  }, [phase, charIndex]);
 
   useEffect(() => {
     if (phase !== "citations") return;
@@ -75,7 +69,7 @@ export function Hero() {
     if (phase !== "waiting") return;
     const t = setTimeout(() => {
       setPhase("user");
-      setWordIndex(0);
+      setCharIndex(0);
       setCitationShow(0);
       setBadgesShow(false);
       setInputShow(false);
@@ -83,35 +77,27 @@ export function Hero() {
     return () => clearTimeout(t);
   }, [phase]);
 
-  const visibleWords = words.slice(0, wordIndex);
+  const boundaries: number[] = [];
+  let cum = 0;
+  for (const s of segments) {
+    boundaries.push(cum);
+    cum += s.text.length;
+  }
 
   const renderTypedAnswer = () => {
-    const rendered: React.ReactNode[] = [];
-    let wordOffset = 0;
-    for (const seg of segments) {
-      const segChars = seg.text.split("");
-      const segWords = segChars.map((_, i) => wordOffset + i);
-      const segVisible = segWords.filter((i) => i < wordIndex).length;
-      if (segVisible === 0) {
-        wordOffset += segChars.length;
-        continue;
-      }
-      const segText = seg.text.slice(
-        0,
-        Math.min(seg.text.length, wordIndex - wordOffset)
-      );
-      if (segText) {
-        rendered.push(
-          seg.isCode ? (
-            <span key={wordOffset} className="font-mono text-[#3b82f6]">{segText}</span>
-          ) : (
-            <span key={wordOffset}>{segText}</span>
-          )
+    return segments.map((seg, i) => {
+      const start = boundaries[i];
+      const end = start + seg.text.length;
+      const revealed = Math.max(0, Math.min(seg.text.length, charIndex - start));
+      const visible = seg.text.slice(0, revealed);
+      if (!visible) return null;
+      if (seg.isCode) {
+        return (
+          <span key={i} className="font-mono text-[#3b82f6]">{visible}</span>
         );
       }
-      wordOffset += segChars.length;
-    }
-    return rendered;
+      return <span key={i}>{visible}</span>;
+    });
   };
 
   return (
