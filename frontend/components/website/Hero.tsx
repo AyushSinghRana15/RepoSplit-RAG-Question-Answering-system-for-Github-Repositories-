@@ -1,8 +1,95 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
+const segments = [
+  { text: "File loading is implemented in ", isCode: false },
+  { text: "ingestion/loader.py", isCode: true },
+  { text: ". The ", isCode: false },
+  { text: "walk_repo()", isCode: true },
+  { text: " function traverses the repository tree, and ", isCode: false },
+  { text: "read_file()", isCode: true },
+  { text: " reads each file with encoding error handling.", isCode: false },
+];
+
+const totalChars = segments.reduce((acc, s) => acc + s.text.length, 0);
+const boundaries: number[] = [];
+let cum = 0;
+for (const s of segments) {
+  boundaries.push(cum);
+  cum += s.text.length;
+}
+
+type Phase = "user" | "assistant_label" | "typing" | "citations" | "badges" | "input" | "waiting";
+
 export function Hero() {
+  const [phase, setPhase] = useState<Phase>("user");
+  const [charIndex, setCharIndex] = useState(0);
+  const [citationShow, setCitationShow] = useState(0);
+  const [badgesShow, setBadgesShow] = useState(false);
+  const [inputShow, setInputShow] = useState(false);
+
+  useEffect(() => {
+    if (phase !== "typing") return;
+    if (charIndex >= totalChars) {
+      setPhase("citations");
+      return;
+    }
+    const t = setTimeout(() => setCharIndex((c) => c + 1), 22);
+    return () => clearTimeout(t);
+  }, [phase, charIndex]);
+
+  useEffect(() => {
+    if (phase !== "citations") return;
+    if (citationShow >= 2) {
+      const t = setTimeout(() => setPhase("badges"), 400);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => setCitationShow((c) => c + 1), 350);
+    return () => clearTimeout(t);
+  }, [phase, citationShow]);
+
+  useEffect(() => {
+    if (phase !== "badges") return;
+    const t = setTimeout(() => { setBadgesShow(true); setPhase("input"); }, 500);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "input") return;
+    const t = setTimeout(() => { setInputShow(true); setPhase("waiting"); }, 600);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "waiting") return;
+    const t = setTimeout(() => {
+      setPhase("user");
+      setCharIndex(0);
+      setCitationShow(0);
+      setBadgesShow(false);
+      setInputShow(false);
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  const renderTypedAnswer = () => {
+    return segments.map((seg, i) => {
+      const start = boundaries[i];
+      const end = start + seg.text.length;
+      const revealed = Math.max(0, Math.min(seg.text.length, charIndex - start));
+      const visible = seg.text.slice(0, revealed);
+      if (!visible) return null;
+      if (seg.isCode) {
+        return (
+          <span key={i} className="font-mono text-[#3b82f6]">{visible}</span>
+        );
+      }
+      return <span key={i}>{visible}</span>;
+    });
+  };
+
   return (
     <section className="relative min-h-[90vh] flex items-center pt-24 overflow-hidden" style={{ background: "var(--bg-primary)" }}>
       <div
@@ -93,8 +180,8 @@ export function Hero() {
                   codebaseai — Assistant
                 </span>
               </div>
-              <div className="p-5 space-y-4">
-                <div className="flex items-start gap-3">
+              <div className="p-5 space-y-4 min-h-[300px]">
+                <div className="flex items-start gap-3 transition-all duration-500" style={{ opacity: phase ? 1 : 0 }}>
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: "linear-gradient(135deg, #3b82f6, #8b5cf6)" }}>
                     U
                   </div>
@@ -107,37 +194,73 @@ export function Hero() {
                 </div>
 
                 <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: "var(--bg-card)", border: "1px solid var(--border-subtle)", color: "var(--text-primary)" }}>
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 transition-all duration-500"
+                    style={{
+                      background: "var(--bg-card)",
+                      border: "1px solid var(--border-subtle)",
+                      color: "var(--text-primary)",
+                      opacity: phase === "user" ? 0 : 1,
+                      transform: phase === "user" ? "translateY(8px)" : "translateY(0)",
+                    }}
+                  >
                     AI
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>Assistant</div>
+                    <div
+                      className="text-xs font-medium mb-1 transition-all duration-500"
+                      style={{ color: "var(--text-muted)", opacity: phase === "user" ? 0 : 1 }}
+                    >
+                      Assistant
+                    </div>
                     <div className="text-sm leading-relaxed px-3.5 py-2.5 rounded-xl" style={{ background: "var(--bg-secondary)", color: "var(--text-primary)" }}>
-                      File loading is implemented in{" "}
-                      <span className="font-mono text-[#3b82f6]">ingestion/loader.py</span>.
-                      The <span className="font-mono">walk_repo()</span> function traverses the
-                      repository tree, and <span className="font-mono">read_file()</span> reads
-                      each file with encoding error handling.
+                      {phase === "user" ? (
+                        <span className="text-[#3b82f6]/40">▊</span>
+                      ) : (
+                        <>
+                          {renderTypedAnswer()}
+                          {phase === "typing" && (
+                            <span className="inline-block w-[2px] h-[1em] ml-[1px] align-middle bg-[#3b82f6] animate-pulse" />
+                          )}
+                        </>
+                      )}
                     </div>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono" style={{ background: "rgba(59,130,246,0.1)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}>
-                        <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none">
-                          <path d="M14 8.5V12a2 2 0 01-2 2H4a2 2 0 01-2-2V4a2 2 0 012-2h3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                          <path d="M11 2l3 3-6 6H8l.5-3L11 2z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                        loader.py :: walk_repo
-                        <span className="opacity-60">0.77</span>
-                      </div>
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono" style={{ background: "rgba(59,130,246,0.1)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}>
-                        <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none">
-                          <path d="M14 8.5V12a2 2 0 01-2 2H4a2 2 0 01-2-2V4a2 2 0 012-2h3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                          <path d="M11 2l3 3-6 6H8l.5-3L11 2z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                        loader.py :: read_file
-                        <span className="opacity-60">0.84</span>
-                      </div>
+                    <div className="flex flex-wrap gap-2 mt-2 min-h-[28px]">
+                      {[0, 1].map((i) => {
+                        const labels = [
+                          { file: "loader.py", symbol: "walk_repo", score: "0.77" },
+                          { file: "loader.py", symbol: "read_file", score: "0.84" },
+                        ];
+                        const l = labels[i];
+                        return (
+                          <div
+                            key={i}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono transition-all duration-500"
+                            style={{
+                              background: "rgba(59,130,246,0.1)",
+                              color: "#3b82f6",
+                              border: "1px solid rgba(59,130,246,0.2)",
+                              opacity: citationShow > i ? 1 : 0,
+                              transform: citationShow > i ? "translateY(0) scale(1)" : "translateY(6px) scale(0.95)",
+                            }}
+                          >
+                            <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none">
+                              <path d="M14 8.5V12a2 2 0 01-2 2H4a2 2 0 01-2-2V4a2 2 0 012-2h3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                              <path d="M11 2l3 3-6 6H8l.5-3L11 2z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            {l.file} :: {l.symbol}
+                            <span className="opacity-60">{l.score}</span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="flex items-center gap-2 mt-2">
+                    <div
+                      className="flex items-center gap-2 mt-2 transition-all duration-500"
+                      style={{
+                        opacity: badgesShow ? 1 : 0,
+                        transform: badgesShow ? "translateY(0)" : "translateY(6px)",
+                      }}
+                    >
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium" style={{ background: "rgba(16,185,129,0.1)", color: "#10b981" }}>
                         Grounded ✓
                       </span>
@@ -148,12 +271,22 @@ export function Hero() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: "var(--bg-secondary)" }}>
+                <div
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-500"
+                  style={{
+                    background: "var(--bg-secondary)",
+                    opacity: inputShow ? 1 : 0,
+                    transform: inputShow ? "translateY(0)" : "translateY(6px)",
+                  }}
+                >
                   <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" style={{ color: "var(--text-muted)" }}>
                     <path d="M14 8.5V12a2 2 0 01-2 2H4a2 2 0 01-2-2V4a2 2 0 012-2h3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                     <path d="M11 2l3 3-6 6H8l.5-3L11 2z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                  <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>Ask anything about any repository...</span>
+                  <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                    Ask anything about any repository...
+                  </span>
+                  {inputShow && <span className="w-[2px] h-4 bg-[#3b82f6] animate-pulse ml-auto" />}
                 </div>
               </div>
             </div>
