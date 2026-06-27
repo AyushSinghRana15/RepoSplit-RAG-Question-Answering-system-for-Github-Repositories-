@@ -37,4 +37,3 @@ test_outputs.txt
 
 # Ingest status files (generated during GitHub ingestion)
 .ingest_status/
-CodeBase/
