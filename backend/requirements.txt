@@ -28,3 +28,6 @@ httpx>=0.27.0
 
 # Web Search
 ddgs>=1.0.0
+
+# Memory monitoring / scaling (optional, for 5GB+ repos)
+psutil>=5.9.0

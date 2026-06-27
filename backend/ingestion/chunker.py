@@ -2,15 +2,14 @@
 
 import re
 import os
+from typing import Generator, List
 
 from ingestion.ast_parser import parse_python_ast
 
-# Max lines per chunk before forced splitting; overlap lines between adjacent chunks
 CHUNK_MAX_LINES = 150
 CHUNK_OVERLAP_LINES = 3
 
 
-# Build a single chunk dict with content and metadata
 def create_chunk(content, start_line, end_line, chunk_type, name, file_path, language, **extra):
     meta = {
         "file_path": file_path,
@@ -25,7 +24,6 @@ def create_chunk(content, start_line, end_line, chunk_type, name, file_path, lan
     return {"content": content, "metadata": meta}
 
 
-# Split a chunk exceeding CHUNK_MAX_LINES into multiple sub-chunks with overlap
 def split_large_chunk(content, start_line, chunk_type, name, file_path, language, **extra):
     lines = content.split('\n')
     total = len(lines)
@@ -51,8 +49,7 @@ def split_large_chunk(content, start_line, chunk_type, name, file_path, language
     return sub_chunks
 
 
-# Parse file content into chunks: uses AST for Python, regex boundaries for other languages
-def parse_chunks(file_content, file_path, language):
+def parse_chunks(file_content, file_path, language) -> List[dict]:
     if not file_content.strip():
         return []
 
@@ -99,7 +96,6 @@ def parse_chunks(file_content, file_path, language):
                 content = '\n'.join(lines[start-1:end])
                 chunks.append(create_chunk(content, start, end, ctype, name, file_path, language))
 
-    # Add overlap between adjacent regex-based chunks (non-Python)
     if language != 'python' and len(chunks) > 1:
         overlapped = [chunks[0]]
         for i in range(1, len(chunks)):
@@ -113,7 +109,6 @@ def parse_chunks(file_content, file_path, language):
             overlapped.append(curr)
         chunks = overlapped
 
-    # Post-process all chunks: split if they exceed CHUNK_MAX_LINES lines
     processed_chunks = []
     for c in chunks:
         content = c["content"]
@@ -134,6 +129,12 @@ def parse_chunks(file_content, file_path, language):
         else:
             processed_chunks.append(c)
 
-    # Filter out tiny chunks (less than 30 characters)
     final_chunks = [c for c in processed_chunks if len(c["content"]) >= 30]
     return final_chunks
+
+
+def parse_chunks_streaming(file_content, file_path, language) -> Generator[dict, None, None]:
+    """Generator variant of parse_chunks — yields chunks one at a time to reduce memory pressure."""
+    chunks = parse_chunks(file_content, file_path, language)
+    for c in chunks:
+        yield c

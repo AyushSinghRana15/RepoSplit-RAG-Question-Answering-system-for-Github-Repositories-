@@ -8,44 +8,75 @@ from ingestion.chunker import parse_chunks
 
 
 def run_ingestion(repo_path, output_path):
-    # CLI entry point — walks the given repo directory, reads every supported file,
-    # parses it into AST-aware chunks, and writes all chunks to a JSON file.
     repo_path = os.path.abspath(repo_path)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    all_chunks = []
+    # Use SQLite for large repos, JSON for small ones
+    import config
+    from db.chunk_store import init_db, insert_chunks, count_chunks, clear_db, get_connection
+    from config import SQLITE_BATCH_COMMIT, MAX_TOTAL_CHUNKS
+
+    total_chunks = 0
     files_processed = 0
+    buffer = []
 
-    for full_path, rel_path, language in walk_repo(repo_path):
-        content = read_file(full_path)
-        if content is None:
-            continue
-        chunks = parse_chunks(content, rel_path, language)
-        all_chunks.extend(chunks)
-        files_processed += 1
+    clear_db()
+    init_db()
+    conn = get_connection()
 
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(all_chunks, f, indent=2, ensure_ascii=False)
+    try:
+        for full_path, rel_path, language in walk_repo(repo_path):
+            content = read_file(full_path)
+            if content is None:
+                continue
+            chunks = parse_chunks(content, rel_path, language)
+            if not chunks:
+                continue
 
-    type_counts = Counter(c["metadata"]["chunk_type"] for c in all_chunks)
-    lang_counts = Counter(c["metadata"]["language"] for c in all_chunks)
+            buffer.extend(chunks)
+            if len(buffer) >= SQLITE_BATCH_COMMIT:
+                insert_chunks(buffer, conn)
+                total_chunks += len(buffer)
+                buffer = []
+            files_processed += 1
+
+            if MAX_TOTAL_CHUNKS > 0 and total_chunks >= MAX_TOTAL_CHUNKS:
+                break
+
+        if buffer:
+            insert_chunks(buffer, conn)
+            total_chunks += len(buffer)
+            buffer = []
+    finally:
+        conn.close()
+
+    total = count_chunks()
+    all_chunks = []
+    if total <= 50000:
+        from db.chunk_store import get_all_chunks
+        all_chunks = get_all_chunks()
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(all_chunks, f, indent=2, ensure_ascii=False)
+
+    type_counts = Counter(c["metadata"]["chunk_type"] for c in all_chunks) if all_chunks else {}
+    lang_counts = Counter(c["metadata"]["language"] for c in all_chunks) if all_chunks else {}
 
     print("Ingestion complete")
     print(f"  Files processed : {files_processed}")
-    print(f"  Total chunks    : {len(all_chunks)}")
+    print(f"  Total chunks    : {total}")
     print(f"  By type         : {', '.join(f'{k}={v}' for k, v in type_counts.items())}")
     print(f"  Languages       : {', '.join(f'{k}={v}' for k, v in lang_counts.items())}")
     print(f"  Output          : {output_path}")
+    if total > 50000:
+        print(f"  (Large repo: chunks stored in SQLite at vector_store/chunks.db)")
 
 
 def run_embedding():
-    # Generates sentence-transformers embeddings for all chunks and builds a FAISS index.
     from embeddings.embedder import embed_chunks
     embed_chunks()
 
 
 def run_query(query):
-    # Quick semantic search — returns top-k FAISS results with L2 distances.
     from embeddings.retriever import retrieve
     print(f'Query: "{query}"')
     print("-" * 40)
@@ -57,7 +88,6 @@ def run_query(query):
 
 
 def run_ask(query):
-    # Full RAG pipeline: spell-check → classify → rewrite → hybrid retrieve → rerank → LLM generate → validate.
     from pipeline.ask import ask
     result = ask(query, top_k=5)
 
@@ -74,7 +104,6 @@ def run_ask(query):
 
 
 def run_egg():
-    # Hidden easter egg — because every good project needs one. 🥚
     print("  🥚  🥚  🥚  🥚  🥚")
     print("  🥚             🥚")
     print("  🥚   Ayush    🥚")
@@ -84,7 +113,6 @@ def run_egg():
 
 
 def main():
-    # Parses CLI args and dispatches to the appropriate step (ingest → embed → query/ask).
     parser = argparse.ArgumentParser(description="CodeBase AI Assistant")
     parser.add_argument("--repo", help="Path to the repo to ingest (Step 1)")
     parser.add_argument("--output", default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output", "chunks.json"), help="Output JSON file path")
