@@ -73,6 +73,7 @@ def ingest_main(task_id: str, status_file: str, repo_url: str, branch: str | Non
     total_chunks = 0
     buffer = []
 
+    debug_first_chunk = None
     try:
         for idx, file_path in enumerate(files):
             # Memory check — stop early if we're running low
@@ -126,10 +127,26 @@ def ingest_main(task_id: str, status_file: str, repo_url: str, branch: str | Non
 
             try:
                 chunks = parse_chunks(file_content=content, file_path=rel_path, language=language)
-            except Exception:
+            except Exception as e:
+                if debug_first_chunk is None:
+                    debug_first_chunk = {
+                        "first_exception": str(e),
+                        "file": rel_path,
+                        "ext": ext,
+                        "language": language,
+                    }
                 continue
 
             if not chunks:
+                if debug_first_chunk is None:
+                    debug_first_chunk = {
+                        "first_empty_chunks": True,
+                        "file": rel_path,
+                        "ext": ext,
+                        "language": language,
+                        "content_len": len(content),
+                        "content_preview": content[:200],
+                    }
                 continue
 
             # Write to SQLite in batches to avoid huge memory buffers
@@ -166,7 +183,10 @@ def ingest_main(task_id: str, status_file: str, repo_url: str, branch: str | Non
     total_chunks = count_chunks()
 
     if total_chunks == 0:
-        update_status(status_file, {"status": "error", "error": "No chunks generated from repository", "files_total": len(files)})
+        info = {"status": "error", "error": "No chunks generated from repository", "files_total": len(files)}
+        if debug_first_chunk:
+            info["debug"] = debug_first_chunk
+        update_status(status_file, info)
         return
 
     del files
