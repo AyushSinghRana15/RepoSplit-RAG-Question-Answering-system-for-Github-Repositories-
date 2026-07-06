@@ -129,7 +129,7 @@ def parse_chunks(file_content, file_path, language) -> List[dict]:
         else:
             processed_chunks.append(c)
 
-    final_chunks = [c for c in processed_chunks if len(c["content"]) >= 30]
+    final_chunks = [c for c in processed_chunks if len(c["content"]) >= 10]
     return final_chunks
 
 
