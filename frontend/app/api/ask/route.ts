@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL = process.env.BACKEND_URL;
+const BACKEND_URL = (process.env.BACKEND_URL || "").replace(/\/+$/, "");
 const BACKEND_KEY = process.env.BACKEND_API_KEY;
 
 // POST /api/ask — validate query, proxy to backend, handle timeout
