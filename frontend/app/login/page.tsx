@@ -17,14 +17,33 @@ const particles = Array.from({ length: 40 }, (_, i) => ({
 
 // Login/signup page with Google OAuth, tab switching, and animated backdrop
 export default function LoginPage() {
-  const { signIn } = useAuth();
+  const { signIn, signInWithEmail, signUpWithEmail, backendError } = useAuth();
   const [tab, setTab] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg("");
+    if (!email || !password) {
+      setErrorMsg("Email and password are required.");
+      return;
+    }
+    if (tab === "signup" && !name) {
+      setErrorMsg("Name is required for sign up.");
+      return;
+    }
+    setSubmitting(true);
+    const result = tab === "login"
+      ? await signInWithEmail(email, password)
+      : await signUpWithEmail(email, password, name);
+    setSubmitting(false);
+    if (result.error) {
+      setErrorMsg(result.error);
+    }
   };
 
   return (
@@ -105,7 +124,7 @@ export default function LoginPage() {
               style={{ background: "var(--bg-secondary)" }}
             >
               <button
-                onClick={() => setTab("login")}
+                onClick={() => { setTab("login"); setErrorMsg(""); }}
                 className="flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-300"
                 style={{
                   color: tab === "login" ? "var(--text-primary)" : "var(--text-muted)",
@@ -116,7 +135,7 @@ export default function LoginPage() {
                 Sign In
               </button>
               <button
-                onClick={() => setTab("signup")}
+                onClick={() => { setTab("signup"); setErrorMsg(""); }}
                 className="flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-300"
                 style={{
                   color: tab === "signup" ? "var(--text-primary)" : "var(--text-muted)",
@@ -221,21 +240,37 @@ export default function LoginPage() {
                 </div>
               )}
 
+              {/* Error message */}
+              {(errorMsg || backendError) && (
+                <div
+                  className="text-xs p-3 rounded-xl border"
+                  style={{
+                    color: "#ef4444",
+                    borderColor: "rgba(239, 68, 68, 0.3)",
+                    background: "rgba(239, 68, 68, 0.1)",
+                    animation: "form-slide-up 0.6s ease-out 0.3s both",
+                  }}
+                >
+                  {errorMsg || backendError}
+                </div>
+              )}
+
               {/* Primary submit button */}
               <button
                 type="submit"
-                className="w-full py-2.5 text-sm font-semibold text-white rounded-xl transition-all duration-300 hover:opacity-90 active:scale-[0.98] relative overflow-hidden group"
+                disabled={submitting}
+                className="w-full py-2.5 text-sm font-semibold text-white rounded-xl transition-all duration-300 hover:opacity-90 active:scale-[0.98] relative overflow-hidden group disabled:opacity-50"
                 style={{
                   background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
                   animation: "form-slide-up 0.6s ease-out 0.3s both",
                 }}
               >
-                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 disabled:hidden"
                   style={{
                     background: "linear-gradient(135deg, #2563eb, #7c3aed)",
                   }}
                 />
-                <span className="relative">{tab === "login" ? "Sign In" : "Create Account"}</span>
+                <span className="relative">{submitting ? "Please wait..." : (tab === "login" ? "Sign In" : "Create Account")}</span>
               </button>
             </form>
 
@@ -253,7 +288,7 @@ export default function LoginPage() {
 
             {/* Google OAuth button */}
             <button
-              onClick={signIn}
+              onClick={() => { setErrorMsg(""); signIn(); }}
               className="w-full flex items-center justify-center gap-3 px-4 py-2.5 text-sm font-medium rounded-xl border transition-all duration-300 hover:opacity-80 active:scale-[0.98]"
               style={{
                 color: "var(--text-primary)",
