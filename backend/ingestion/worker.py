@@ -186,6 +186,15 @@ def ingest_main(task_id: str, status_file: str, repo_url: str, branch: str | Non
         info = {"status": "error", "error": "No chunks generated from repository", "files_total": len(files)}
         if debug_first_chunk:
             info["debug"] = debug_first_chunk
+        # Don't overwrite if there was already a warning written
+        if os.path.exists(status_file):
+            try:
+                with open(status_file) as f:
+                    existing = json.load(f)
+                if existing.get("status") == "warning":
+                    return  # Preserve the warning
+            except Exception:
+                pass
         update_status(status_file, info)
         return
 

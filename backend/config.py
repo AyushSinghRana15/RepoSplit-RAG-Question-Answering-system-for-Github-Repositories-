@@ -110,7 +110,7 @@ FAISS_USE_MMAP = True
 
 # Memory threshold: fraction of total RAM to stay under during ingestion/embedding
 # Set to 0.0 to disable memory monitoring
-MEMORY_THRESHOLD = 0.75
+MEMORY_THRESHOLD = 1.0  # Disabled — psutil reports host memory in Docker, not container limits
 
 # Chunk storage backend: "json" (legacy) or "sqlite" (recommended for large repos)
 CHUNK_STORAGE_BACKEND = "sqlite"
