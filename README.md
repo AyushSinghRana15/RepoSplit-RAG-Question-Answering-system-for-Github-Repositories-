@@ -1,3 +1,12 @@
+---
+title: RepoSplit
+emoji: 🚀
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+---
+
 # RepoSplit
 
 > Ask natural language questions about any codebase. Get code-grounded answers with file citations.
