@@ -219,6 +219,167 @@ def diagnose():
     return results
 
 
+# Deep debug — simulates the exact worker flow for a small repo
+@app.get("/debug/deep-diagnose")
+def deep_diagnose():
+    import tempfile, subprocess, shutil, time
+    from pathlib import Path
+    from config import MAX_FILE_SIZE
+    from ingestion.chunker import parse_chunks
+
+    repo_url = "https://github.com/pallets/flask.git"
+    results = {"repo_url": repo_url}
+
+    # Clone
+    temp_dir = tempfile.mkdtemp(prefix="codebase_deep_")
+    try:
+        subprocess.run(["git", "clone", "--depth", "1", "--single-branch", repo_url, temp_dir],
+                       check=True, capture_output=True, timeout=120)
+        results["clone_ok"] = True
+
+        # Simulate what ingest_github_repo does
+        supported_extensions = {
+            '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.cpp', '.c',
+            '.h', '.hpp', '.go', '.rs', '.rb', '.php', '.swift', '.kt',
+            '.scala', '.cs', '.sh', '.bash', '.zsh', '.sql', '.css',
+            '.scss', '.less', '.html', '.htm', '.xml', '.yaml', '.yml',
+            '.toml', '.json', '.md', '.rst', '.txt',
+        }
+        skip_dirs = {
+            '.git', 'node_modules', '__pycache__', 'venv', '.venv',
+            'data', 'datasets', 'dataset', 'assets', 'static',
+            'models', 'checkpoints', 'weights', '.ipynb_checkpoints',
+            'dist', 'build', '.tox', '.mypy_cache', '.pytest_cache',
+            '.next', '.turbo', 'out', '.cache', 'coverage', '.vercel',
+            '.serverless_micro', 'public', 'output', 'vector_store',
+            '.terraform', 'Pods', '.gradle', 'target', 'bin', 'obj',
+            'vendor', 'third_party', 'third-party', '.bazel',
+            'site-packages', '.eggs', 'eggs', '.dart_tool',
+        }
+        skip_extensions = {
+            '.csv', '.tsv', '.jsonl', '.parquet', '.pickle', '.pkl',
+            '.h5', '.hdf5', '.npy', '.npz', '.bin', '.dat', '.db',
+            '.sqlite', '.sqlite3', '.arrow', '.feather',
+        }
+        results["_ingestor_loaded"] = True
+
+        files = []
+        for fp in Path(temp_dir).rglob("*"):
+            if not fp.is_file():
+                continue
+            parts = fp.relative_to(temp_dir).parts
+            if any(p in skip_dirs for p in parts):
+                continue
+            if fp.suffix in skip_extensions:
+                continue
+            if fp.suffix in supported_extensions:
+                files.append(str(fp))
+
+        results["total_files"] = len(files)
+
+        # Process first 5 files like the worker does
+        repo_path = os.path.commonpath(files) if files else ""
+        results["repo_path"] = repo_path
+
+        lang_map = {
+            ".py": "python", ".js": "javascript", ".ts": "typescript",
+            ".jsx": "javascript", ".tsx": "typescript", ".java": "java",
+            ".cpp": "cpp", ".c": "c", ".go": "go", ".rs": "rust",
+            ".rb": "ruby", ".php": "php", ".swift": "swift", ".kt": "kotlin",
+            ".md": "markdown", ".txt": "text",
+        }
+
+        sample_results = []
+        for idx, file_path in enumerate(files[:5]):
+            info = {"idx": idx, "path": file_path}
+            ext = os.path.splitext(file_path)[1]
+            language = lang_map.get(ext, "text")
+            info["language"] = language
+            info["ext"] = ext
+            info["exists"] = os.path.exists(file_path)
+            try:
+                info["size"] = os.path.getsize(file_path)
+            except Exception as e:
+                info["size_error"] = str(e)
+                sample_results.append(info)
+                continue
+
+            try:
+                with open(file_path, "rb") as f:
+                    raw = f.read(8192)
+                info["binary"] = b"\0" in raw
+            except Exception as e:
+                info["read_error"] = str(e)
+                sample_results.append(info)
+                continue
+
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+                info["content_len"] = len(content)
+                info["content_stripped"] = len(content.strip())
+            except Exception as e:
+                info["read_text_error"] = str(e)
+                sample_results.append(info)
+                continue
+
+            rel_path = os.path.relpath(file_path, repo_path) if repo_path else file_path
+            info["rel_path"] = rel_path
+
+            try:
+                chunks = parse_chunks(file_content=content, file_path=rel_path, language=language)
+                info["chunks_returned"] = len(chunks)
+                if chunks:
+                    info["sample_chunk"] = chunks[0]["content"][:80]
+                    info["sample_chunk_len"] = len(chunks[0]["content"])
+            except Exception as e:
+                info["parse_error"] = str(e)
+
+            sample_results.append(info)
+
+        results["sample_results"] = sample_results
+
+        # Also count total chunks from all files (but only process first 20)
+        total_chunks = 0
+        for idx, file_path in enumerate(files[:20]):
+            ext = os.path.splitext(file_path)[1]
+            language = lang_map.get(ext, "text")
+
+            if os.path.getsize(file_path) > MAX_FILE_SIZE:
+                continue
+
+            try:
+                with open(file_path, "rb") as f:
+                    raw = f.read(8192)
+                if b"\0" in raw:
+                    continue
+            except Exception:
+                continue
+
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+            except Exception:
+                continue
+
+            rel_path = os.path.relpath(file_path, repo_path) if repo_path else file_path
+
+            try:
+                chunks = parse_chunks(content, rel_path, language)
+                total_chunks += len(chunks) if chunks else 0
+            except Exception:
+                continue
+
+        results["total_chunks_from_20_files"] = total_chunks
+
+    except Exception as e:
+        results["error"] = str(e)
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    return results
+
+
 # Fun easter egg endpoint
 @app.get("/egg")
 def easter_egg():
