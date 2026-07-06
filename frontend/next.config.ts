@@ -1,18 +1,10 @@
-// Next.js config — API rewrites to backend and legacy URL redirects
+// Next.js config — legacy URL redirects only
+// API proxying is handled by route handlers in app/api/
 
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  // Rewrite /api/* requests to the backend server
-  async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${process.env.BACKEND_URL || "http://localhost:8000"}/:path*`,
-      },
-    ];
-  },
   // Redirect old /website/* routes to home
   async redirects() {
     return [
