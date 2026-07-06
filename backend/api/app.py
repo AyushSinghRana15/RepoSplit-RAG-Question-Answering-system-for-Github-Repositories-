@@ -126,9 +126,28 @@ def diagnose():
     results = {}
 
     # 1. Check SQLite
-    from config import CHUNK_DB_PATH
+    import sqlite3
+    from config import CHUNK_DB_PATH, PROJECT_ROOT
+    results["project_root"] = PROJECT_ROOT
     results["chunk_db_path"] = CHUNK_DB_PATH
-    results["chunk_db_writable"] = os.access(os.path.dirname(CHUNK_DB_PATH), os.W_OK)
+    results["chunk_db_dir_exists"] = os.path.exists(os.path.dirname(CHUNK_DB_PATH))
+    results["project_root_writable"] = os.access(PROJECT_ROOT, os.W_OK)
+    results["chunk_db_dir_writable"] = os.access(os.path.dirname(CHUNK_DB_PATH), os.W_OK) if os.path.exists(os.path.dirname(CHUNK_DB_PATH)) else "dir_does_not_exist"
+
+    # Test actual SQLite operations
+    try:
+        os.makedirs(os.path.dirname(CHUNK_DB_PATH), exist_ok=True)
+        results["mkdir_success"] = True
+        conn = sqlite3.connect(CHUNK_DB_PATH)
+        conn.execute("CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY, val TEXT)")
+        conn.execute("INSERT INTO test (val) VALUES ('hello')")
+        val = conn.execute("SELECT val FROM test LIMIT 1").fetchone()[0]
+        conn.execute("DROP TABLE IF EXISTS test")
+        conn.close()
+        os.remove(CHUNK_DB_PATH)
+        results["sqlite_test"] = val
+    except Exception as e:
+        results["sqlite_error"] = str(e)
 
     # 2. Test clone and chunk a single small file
     repo_url = "https://github.com/pallets/flask.git"
