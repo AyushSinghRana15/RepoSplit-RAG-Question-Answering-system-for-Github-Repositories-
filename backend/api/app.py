@@ -377,6 +377,84 @@ def deep_diagnose():
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
+    # Also run the same test in a DAEMON THREAD to reproduce the worker issue
+    import threading, queue
+    thread_result = queue.Queue()
+    def _test_in_thread():
+        """Same chunking logic but run in a daemon thread."""
+        local_result = {}
+        try:
+            # Check importing in thread
+            try:
+                from ingestion.chunker import parse_chunks as pc2
+                local_result["import_in_thread"] = "ok"
+            except Exception as e:
+                local_result["import_in_thread"] = str(e)
+                thread_result.put(local_result)
+                return
+
+            # Test parse_chunks on a simple string
+            try:
+                c = pc2("def foo():\n    pass\n", "test.py", "python")
+                local_result["thread_parse_chunks"] = len(c)
+            except Exception as e:
+                local_result["thread_parse_error"] = str(e)
+
+            # Test worker's import flow
+            try:
+                from ingestion.worker import ingest_main
+                local_result["import_worker_ok"] = True
+            except Exception as e:
+                local_result["import_worker_err"] = str(e)
+
+            # Test running ingest_main in thread (use a very small repo)
+            import tempfile, subprocess, shutil
+            from pathlib import Path
+            from ingestion.chunker import parse_chunks as pc3
+
+            small_template = tempfile.mkdtemp(prefix="thread_small_")
+            try:
+                os.makedirs(os.path.join(small_template, "src"), exist_ok=True)
+                with open(os.path.join(small_template, "src", "hello.py"), "w") as f:
+                    f.write("def greet(name):\n    return f'Hello {name}'\n\nclass Person:\n    def __init__(self, name):\n        self.name = name\n")
+                with open(os.path.join(small_template, "README.md"), "w") as f:
+                    f.write("# Test Repo\n\nThis is a test.\n")
+
+                py_files = list(Path(small_template).rglob("*.py"))
+                for fp in py_files[:1]:
+                    try:
+                        with open(fp, "r") as f:
+                            content = f.read()
+                        c = pc3(content, str(fp), "python")
+                        local_result["thread_chunk_small_file"] = len(c)
+                    except Exception as e:
+                        local_result["thread_chunk_small_err"] = str(e)
+
+                md_files = list(Path(small_template).rglob("*.md"))
+                for fp in md_files[:1]:
+                    try:
+                        with open(fp, "r") as f:
+                            content = f.read()
+                        c = pc3(content, str(fp), "markdown")
+                        local_result["thread_chunk_small_md"] = len(c)
+                    except Exception as e:
+                        local_result["thread_chunk_small_md_err"] = str(e)
+
+            finally:
+                shutil.rmtree(small_template, ignore_errors=True)
+
+        except Exception as e:
+            local_result["thread_unexpected"] = str(e)
+        thread_result.put(local_result)
+
+    t = threading.Thread(target=_test_in_thread, daemon=True)
+    t.start()
+    t.join(timeout=15)
+    if t.is_alive():
+        results["thread_test"] = "timeout (>15s)"
+    else:
+        results["thread_test"] = thread_result.get(timeout=2)
+
     return results
 
 
