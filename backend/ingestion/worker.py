@@ -166,7 +166,7 @@ def ingest_main(task_id: str, status_file: str, repo_url: str, branch: str | Non
     total_chunks = count_chunks()
 
     if total_chunks == 0:
-        update_status(status_file, {"status": "error", "error": "No chunks generated from repository"})
+        update_status(status_file, {"status": "error", "error": "No chunks generated from repository", "files_total": len(files)})
         return
 
     del files

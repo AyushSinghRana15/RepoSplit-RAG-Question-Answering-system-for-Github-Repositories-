@@ -116,6 +116,90 @@ def health_check():
     return {"status": "ok", "version": "1.2.0", "developer": "Ayush Singh"}
 
 
+# Diagnostic endpoint — tests chunker inline to debug "No chunks" issues
+@app.get("/debug/diagnose")
+def diagnose():
+    import tempfile, subprocess, shutil
+    from pathlib import Path
+    from ingestion.chunker import parse_chunks
+
+    results = {}
+
+    # 1. Check SQLite
+    from config import CHUNK_DB_PATH
+    results["chunk_db_path"] = CHUNK_DB_PATH
+    results["chunk_db_writable"] = os.access(os.path.dirname(CHUNK_DB_PATH), os.W_OK)
+
+    # 2. Test clone and chunk a single small file
+    repo_url = "https://github.com/pallets/flask.git"
+    temp_dir = tempfile.mkdtemp(prefix="codebase_diag_")
+    try:
+        subprocess.run(["git", "clone", "--depth", "1", "--single-branch", repo_url, temp_dir],
+                       check=True, capture_output=True, timeout=120)
+        results["clone_success"] = True
+
+        py_files = list(Path(temp_dir).rglob("*.py"))
+        results["total_py_files"] = len(py_files)
+
+        if py_files:
+            # Test parse_chunks on the first Python file
+            fp = str(py_files[0])
+            results["test_file"] = fp
+            with open(fp, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+            results["test_file_size"] = len(content)
+            try:
+                chunks = parse_chunks(content, fp, "python")
+                results["test_file_chunks"] = len(chunks)
+                if chunks:
+                    results["test_file_chunk_preview"] = chunks[0]["content"][:100]
+            except Exception as e:
+                results["parse_chunks_error"] = str(e)
+
+            # Test on a markdown file
+            md_files = list(Path(temp_dir).rglob("*.md"))
+            if md_files:
+                mfp = str(md_files[0])
+                results["test_md_file"] = mfp
+                with open(mfp, "r", encoding="utf-8", errors="ignore") as f:
+                    md_content = f.read()
+                results["test_md_file_size"] = len(md_content)
+                try:
+                    md_chunks = parse_chunks(md_content, mfp, "markdown")
+                    results["test_md_chunks"] = len(md_chunks)
+                except Exception as e:
+                    results["test_md_error"] = str(e)
+    except Exception as e:
+        results["clone_or_process_error"] = str(e)
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    # 3. Test parse_chunks on a direct string
+    try:
+        direct = parse_chunks("def hello():\n    print('world')\n", "test.py", "python")
+        results["direct_python_chunks"] = len(direct)
+    except Exception as e:
+        results["direct_python_error"] = str(e)
+
+    try:
+        direct_text = parse_chunks("Hello world, this is a test document.\n" * 10, "test.txt", "text")
+        results["direct_text_chunks"] = len(direct_text)
+    except Exception as e:
+        results["direct_text_error"] = str(e)
+
+    # 4. Check psutil
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+        results["memory_percent"] = mem.percent
+        results["memory_available_gb"] = round(mem.available / (1024**3), 2)
+        results["memory_total_gb"] = round(mem.total / (1024**3), 2)
+    except Exception as e:
+        results["psutil_error"] = str(e)
+
+    return results
+
+
 # Fun easter egg endpoint
 @app.get("/egg")
 def easter_egg():
