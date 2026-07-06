@@ -2,9 +2,10 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import { getSupabase } from "@/lib/supabase";
 import { SettingsDropdown } from "@/components/website/SettingsDropdown";
 
 // Types for user history, repos, and stats
@@ -35,6 +36,7 @@ export default function ProfilePage() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [repos, setRepos] = useState<UserRepo[]>([]);
   const [stats, setStats] = useState<UserStats>({ query_count: 0, repo_count: 0 });
+  const [fetchError, setFetchError] = useState("");
 
   // Sync form fields when profile data loads
   useEffect(() => {
@@ -43,21 +45,44 @@ export default function ProfilePage() {
     setBio(profile?.bio || "");
   }, [profile, user]);
 
+  // Build auth headers from current Supabase session
+  const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    const supabase = getSupabase();
+    if (!supabase) return {};
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, []);
+
+  const fetchWithAuth = useCallback(async (url: string) => {
+    const headers = await authHeaders();
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Request failed" }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }, [authHeaders]);
+
   // Fetch user history, repos, and stats on mount
   useEffect(() => {
     if (!user) return;
-    fetch("/api/auth/history").then(r => r.json()).then(setHistory).catch(() => {});
-    fetch("/api/auth/repos").then(r => r.json()).then(setRepos).catch(() => {});
-    fetch("/api/auth/stats").then(r => r.json()).then(setStats).catch(() => {});
-  }, [user]);
+    setFetchError("");
+    Promise.all([
+      fetchWithAuth("/api/auth/history").then(setHistory).catch((e) => { throw e; }),
+      fetchWithAuth("/api/auth/repos").then(setRepos).catch((e) => { throw e; }),
+      fetchWithAuth("/api/auth/stats").then(setStats).catch((e) => { throw e; }),
+    ]).catch((e) => setFetchError(e.message));
+  }, [user, fetchWithAuth]);
 
   // Save profile changes to backend
   const handleSave = async () => {
     setSaving(true);
     try {
+      const headers = await authHeaders();
       const res = await fetch("/api/auth/profile", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ name, bio }),
       });
       if (res.ok) {

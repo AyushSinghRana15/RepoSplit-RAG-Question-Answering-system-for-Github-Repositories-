@@ -19,7 +19,10 @@ interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
+  backendError: string | null;
   signIn: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
+  signUpWithEmail: (email: string, password: string, name?: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -28,7 +31,10 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   loading: true,
+  backendError: null,
   signIn: async () => {},
+  signInWithEmail: async () => ({}),
+  signUpWithEmail: async () => ({}),
   signOut: async () => {},
   refreshProfile: async () => {},
 });
@@ -43,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [backendError, setBackendError] = useState<string | null>(null);
 
   // Fetch user profile from backend
   const fetchProfile = useCallback(async (userId: string) => {
@@ -54,12 +61,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
         },
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Unknown error" }));
+        setBackendError(err.error || `Auth service returned ${res.status}`);
+        return;
+      }
       const data = await res.json();
       if (data.authenticated && data.user) {
         setProfile(data.user);
+        setBackendError(null);
       }
     } catch {
-      // profile fetch failed silently - not critical
+      setBackendError("Cannot connect to authentication service. Please try again later.");
     }
   }, []);
 
@@ -102,8 +115,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Sign in with Google OAuth
   const signIn = useCallback(async () => {
+    setBackendError(null);
     const supabase = getSupabase();
-    if (!supabase) return;
+    if (!supabase) {
+      setBackendError("Authentication is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+      return;
+    }
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -111,8 +128,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
     if (error) {
-      console.error("OAuth sign-in error:", error.message);
+      setBackendError(`OAuth sign-in failed: ${error.message}`);
     }
+  }, []);
+
+  // Sign in with email/password
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    setBackendError(null);
+    const supabase = getSupabase();
+    if (!supabase) return { error: "Authentication is not configured." };
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { error: error.message };
+    return {};
+  }, []);
+
+  // Sign up with email/password
+  const signUpWithEmail = useCallback(async (email: string, password: string, name?: string) => {
+    setBackendError(null);
+    const supabase = getSupabase();
+    if (!supabase) return { error: "Authentication is not configured." };
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: name ? { data: { full_name: name } } : undefined,
+    });
+    if (error) return { error: error.message };
+    return {};
   }, []);
 
   // Sign out and clear state
@@ -125,7 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, loading, backendError, signIn, signInWithEmail, signUpWithEmail, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
