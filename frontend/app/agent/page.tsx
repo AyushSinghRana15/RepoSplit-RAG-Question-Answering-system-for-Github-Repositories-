@@ -173,11 +173,6 @@ export default function Home() {
     const addRepo = parseVoiceAddRepo(voiceQuery);
 
     if (addRepo.detected) {
-      if (!user) {
-        void speak("Please sign in first to add repositories.");
-        return;
-      }
-
       if (!addRepo.repoUrl) {
         void speak("I could not find the repository in your request. Try saying add repository followed by the GitHub URL.");
         return;
@@ -244,7 +239,7 @@ export default function Home() {
     }
 
     void submit(voiceQuery);
-  }, [submit, user, speak]);
+  }, [submit, speak]);
 
   // Register voice query handler with the voice assistant hook
   useEffect(() => {
