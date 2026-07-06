@@ -6,10 +6,80 @@
 
 ## Architecture
 
+### Retrieval Pipeline
+
 ```
-User Query → Spell Check → LLM Query Rewrite → Query Classification → Weighted Hybrid Retrieval (FAISS + BM25) → Rerank → MMR Diversify → Context Assembly (tiktoken) → LLM Generate → Validate → API Response
-                                                                  ↓
-                                              FAISS Vector Store + BM25 Index (case-aware) + Dependency Graph
+User Query
+    │
+    ▼
+┌───────────────────────────────────────────────────────┐
+│ 1. Spell Correction  (pipeline/query_corrector.py)    │
+│    pyspellchecker — preserves code terms, file paths  │
+└───────────────────────┬───────────────────────────────┘
+                        ▼
+┌───────────────────────────────────────────────────────┐
+│ 2. Intent Classification  (pipeline/query_classifier) │
+│    Rule-based → location/flow/explanation/debug/general│
+│    Returns: top_k, bm25_weight per intent             │
+└───────────────────────┬───────────────────────────────┘
+                        ▼
+┌───────────────────────────────────────────────────────┐
+│ 3. Query Rewriting  (pipeline/query_rewriter.py)      │
+│    LLM (gpt-oss-120b:free) rewrites into concise form │
+└───────────────────────┬───────────────────────────────┘
+                        ▼
+┌───────────────────────────────────────────────────────┐
+│ 4. Hybrid Retrieval  (pipeline/hybrid_retriever.py)   │
+│                                                       │
+│   ┌────────────────┐    ┌──────────────────┐          │
+│   │ FAISS (dense)  │    │ BM25 (sparse)    │          │
+│   │ all-MiniLM-L6  │    │ rank_bm25        │          │
+│   │ L2 search, IVF │    │ case-aware token │          │
+│   │ LRU cached     │    │ lazy-built index │          │
+│   └────────┬───────┘    └────────┬─────────┘          │
+│            └────────┬────────────┘                    │
+│                     ▼                                 │
+│         RRF Fusion (weighted by intent)                │
+│         bm25_weight: 0.3–0.7                          │
+└───────────────────────┬───────────────────────────────┘
+                        ▼
+┌───────────────────────────────────────────────────────┐
+│ 5. Cross-Encoder Reranking  (pipeline/reranker.py)    │
+│    ms-marco-MiniLM-L-6-v2 → top 10 → rerank scores    │
+│    MMR diversification (lambda=0.5) → final top 5     │
+└───────────────────────┬───────────────────────────────┘
+                        ▼
+┌───────────────────────────────────────────────────────┐
+│ 6. Context Expansion  (pipeline/context_expander.py)  │
+│    Dependency graph: forward calls + reverse deps     │
+│    depth=1, max 3 additional chunks                   │
+└───────────────────────┬───────────────────────────────┘
+                        ▼
+┌───────────────────────────────────────────────────────┐
+│ 7. Context Assembly  (llm/context_builder.py)         │
+│    tiktoken budgeting → max 16k tokens total,         │
+│    2.5k per chunk, truncation                         │
+└───────────────────────┬───────────────────────────────┘
+                        ▼
+┌───────────────────────────────────────────────────────┐
+│ 8. Answer Generation  (llm/generator.py)              │
+│    OpenRouter gpt-oss-120b:free, temp=0.2, max=800    │
+│    AGENT.md system prompt (169 lines)                 │
+└───────────────────────┬───────────────────────────────┘
+                        ▼
+┌───────────────────────────────────────────────────────┐
+│ 9. Self-Reflection  (pipeline/reflector.py)           │
+│    2nd LLM pass to verify claims against context      │
+│    (only first 1500 chars of context checked)         │
+└───────────────────────┬───────────────────────────────┘
+                        ▼
+┌───────────────────────────────────────────────────────┐
+│ 10. Validation  (pipeline/validator.py)               │
+│     Backtick-symbol grounding check                   │
+│     Confidence scoring from L2 dist + reranker score  │
+└───────────────────────┬───────────────────────────────┘
+                        ▼
+                    Answer + Sources
 ```
 
 ### Frontend (New!)
