@@ -458,6 +458,40 @@ def deep_diagnose():
     return results
 
 
+# Runs the exact ingest_main function synchronously (no background thread)
+@app.get("/debug/test-ingest-main")
+def test_ingest_main():
+    import tempfile, subprocess, shutil, uuid
+    from pathlib import Path
+
+    results = {}
+    task_id = str(uuid.uuid4())
+    status_file = os.path.join(INGEST_TMP_DIR, f"{task_id}.json")
+
+    with open(status_file, "w") as f:
+        json.dump({"status": "queued"}, f)
+
+    repo_url = "https://github.com/pallets/flask.git"
+
+    try:
+        from ingestion.worker import ingest_main
+        ingest_main(task_id, status_file, repo_url, None, None)
+    except Exception as e:
+        results["call_error"] = str(e)
+
+    with open(status_file) as f:
+        final_status = json.load(f)
+    results["final_status"] = final_status
+
+    # Clean up status file
+    try:
+        os.remove(status_file)
+    except Exception:
+        pass
+
+    return results
+
+
 # Fun easter egg endpoint
 @app.get("/egg")
 def easter_egg():
