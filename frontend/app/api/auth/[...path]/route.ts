@@ -75,13 +75,11 @@ async function proxyRequest(req: NextRequest, path: string[], method: string) {
       if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
         return NextResponse.json({ error: "Backend timeout. Authentication service may be overloaded." }, { status: 504 });
       }
-      if (fetchErr instanceof TypeError && fetchErr.message.includes("fetch")) {
-        return NextResponse.json(
-          { error: "Cannot reach the backend server. Make sure the backend is running and BACKEND_URL is correct." },
-          { status: 502 }
-        );
-      }
-      throw fetchErr;
+      const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+      return NextResponse.json(
+        { error: `Backend unreachable: ${msg}`, backend_url: (BACKEND_URL || "").replace(/\/\/.*@/, "//***@") },
+        { status: 502 }
+      );
     }
   } catch {
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
