@@ -57,6 +57,13 @@ async function proxyRequest(req: NextRequest, path: string[], method: string) {
       clearTimeout(timeout);
 
       if (!response.ok) {
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("text/html")) {
+          return NextResponse.json(
+            { error: "Authentication service is currently unavailable (backend returned HTML). Please try again later." },
+            { status: 502 }
+          );
+        }
         const err = await response.text();
         return NextResponse.json({ error: err }, { status: response.status });
       }
@@ -66,7 +73,13 @@ async function proxyRequest(req: NextRequest, path: string[], method: string) {
     } catch (fetchErr: unknown) {
       clearTimeout(timeout);
       if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
-        return NextResponse.json({ error: "Backend timeout" }, { status: 504 });
+        return NextResponse.json({ error: "Backend timeout. Authentication service may be overloaded." }, { status: 504 });
+      }
+      if (fetchErr instanceof TypeError && fetchErr.message.includes("fetch")) {
+        return NextResponse.json(
+          { error: "Cannot reach the backend server. Make sure the backend is running and BACKEND_URL is correct." },
+          { status: 502 }
+        );
       }
       throw fetchErr;
     }
