@@ -7,7 +7,8 @@ import pytest
 CHUNKS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "output", "chunks.json")
 KNOWN_LANGUAGES = {
     "python", "javascript", "typescript", "java", "go", "ruby", "c", "cpp",
-    "rust", "php", "swift", "kotlin", "markdown", "text"
+    "rust", "php", "swift", "kotlin", "markdown", "text", "json", "yaml",
+    "html", "css", "shell", "dockerfile"
 }
 CHUNK_TYPES = {"function", "class", "file"}
 METADATA_KEYS = ["file_path", "language", "chunk_type", "name", "start_line", "end_line", "char_count"]

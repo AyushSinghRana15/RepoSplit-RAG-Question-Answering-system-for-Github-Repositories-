@@ -600,24 +600,26 @@ CodeBase AI Assistant/
 
 | Function | Purpose | Line |
 |----------|---------|------|
-| `create_chunk(...)` | Build chunk dict with metadata | 5-17 |
-| `split_large_chunk(...)` | Split chunks >150 lines | 20-40 |
-| `parse_chunks(file_content, file_path, language)` | Main chunking logic | 43-91 |
+| `create_chunk(...)` | Build chunk dict with metadata | 16-27 |
+| `_extract_header_lines(...)` | Extract `def`/`class` + decorators + docstring for context prepend | 29-52 |
+| `_find_split_idx(...)` | Find best split point near boundary (blank lines > indentation shifts > exact) | 54-69 |
+| `split_large_chunk(...)` | Split chunks >150 lines at semantic boundaries, preserving context | 71-101 |
+| `parse_chunks(file_content, file_path, language)` | Main chunking logic — AST for Python, regex for JS/TS, smart splitting | 103-155 |
+| `parse_chunks_streaming(...)` | Generator variant for large repos (reduced memory pressure) | 157-160 |
 
-**Chunking Strategy (Level 1 — Regex-Based):**
-- **Python patterns:**
-  - Function: `r'^(?:async\s+)?def\s+(\w+)\s*\('`
-  - Class: `r'^class\s+(\w+)'`
-- **JavaScript/TypeScript patterns:**
-  - Function: `r'^(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\('`
-  - Arrow: `r'^(?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*(?:async\s+)?\(.*?\)\s*=>'`
-  - Class: `r'^(?:export\s+)?class\s+(\w+)'`
+**Chunking Strategy (Current):**
+- **Python:** Uses `ast_parser.parse_python_ast()` for accurate AST-based extraction of functions, classes, decorators, docstrings, and internal calls
+- **JavaScript/TypeScript:** Regex-based patterns for `function`, arrow functions, and `class` declarations
+- **Fallback:** If no semantic boundaries found, entire file = one `file`-type chunk
 
 **Key Design Decisions:**
-- **Regex over AST (Level 1)**: Simpler, no dependencies, works across languages
-- **Size guard (150 lines)**: Prevents huge chunks that hurt retrieval
-- **Fallback to file-type**: If no functions/classes found, entire file = one chunk
-- **Empty file handling**: Fixed in post-Step 1 — `if not file_content.strip(): return []`
+- **AST parser (Level 2+)**: Python chunks are built from the AST — accurate, handles async, decorators, nested structures, docstrings, and call extraction
+- **Smart split points** (`_find_split_idx`): When a chunk exceeds 150 lines, searches for blank lines (natural section breaks) within a 10-line window; falls back to indentation changes; never splits mid-statement
+- **Context preservation** (`_extract_header_lines`): Continuation chunks get the function/class signature (decorators + `def`/`class` line + docstring) prepended — every sub-chunk is self-contained for retrieval
+- **Config-driven constants**: `CHUNK_MAX_LINES`, `CHUNK_OVERLAP_LINES`, `CHUNK_MIN_CHARS` live in `backend/config.py` for easy tuning
+- **File-type fallback**: If no functions/classes found, entire file = one chunk
+- **Empty file handling**: `if not file_content.strip(): return []`
+- **Overlap between chunks**: Non-Python chunks get 3-line overlap from the previous chunk for context continuity
 
 #### `main.py`
 **Why:** Single CLI entrypoint for the entire pipeline.
@@ -2961,3 +2963,32 @@ The Sketch (light) theme used a yellow-warm palette (#faf8f0 background, #1a1a2e
 | `--border-subtle` | `rgba(0,0,0,0.08)` | `rgba(44,36,32,0.10)` |
 
 The new palette shifts from a warm paper yellow to a natural warm beige/cream with brown-based shadows and borders, matching the CarmoWood earthy aesthetic.
+
+---
+
+### Session: 2026-07-06 — Debug Endpoints, HF Spaces Deployment & Smart Chunking
+
+#### Context
+Several debug/diagnose endpoints were added to `backend/api/app.py` to diagnose chunking failures in production (the "No chunks" error for non-empty repos). A Dockerfile and HF Spaces metadata were added for Spaces deployment. The chunking engine was also overhauled to be semantic-aware.
+
+#### Changes Made
+
+| # | Change | Files Affected |
+|---|--------|---------------|
+| 1 | **`/debug/diagnose` endpoint** — tests chunker inline for a single file, reports `files_total` in "No chunks" error | `backend/api/app.py`, `backend/ingestion/worker.py` |
+| 2 | **`/debug/deep-diagnose` endpoint** — simulates the exact worker flow (walk → read → chunk → SQLite write) for end-to-end debugging | `backend/api/app.py` |
+| 3 | **`/debug/test-ingest-main` endpoint** — runs `ingest_main` synchronously for isolated testing | `backend/api/app.py` |
+| 4 | **Root Dockerfile** — `python:3.11-slim` based, installs deps, runs `uvicorn` on `0.0.0.0:7860` | `Dockerfile` |
+| 5 | **HF Spaces YAML** — SDK `docker`, metadata for spaces deployment | `README.md` |
+| 6 | **Per-file debug logging** — logs each file path during `walk_repo` iteration to identify skipped files | `backend/ingestion/worker.py` |
+| 7 | **Memory threshold fix** — disable aggressive `MEMORY_THRESHOLD` monitoring (psutil reads host RAM in Docker, not container limits); preserve warning status instead of overwriting with generic error | `backend/config.py`, `backend/ingestion/worker.py` |
+| 8 | **Chunking constants moved to config** — `CHUNK_MAX_LINES`, `CHUNK_OVERLAP_LINES`, `CHUNK_MIN_CHARS` centralized in `backend/config.py` | `backend/config.py`, `backend/ingestion/chunker.py` |
+| 9 | **Smart split points** — `_find_split_idx()` searches for blank lines and indentation boundaries near the 150-line cut, instead of splitting at an exact line count | `backend/ingestion/chunker.py` |
+| 10 | **Context-preserving continuation chunks** — `_extract_header_lines()` extracts the function/class signature (decorators + `def`/`class` + docstring) and prepends it to continuation parts, so every sub-chunk is self-contained | `backend/ingestion/chunker.py` |
+
+#### Design
+- All debug endpoints are gated under the `/debug` prefix — not exposed in production routes
+- The Dockerfile uses `python:3.11-slim` for minimal image size (~150MB)
+- The smart chunker prefers blank lines as split boundaries, falls back to indentation shifts, and as a last resort uses the exact line boundary — ensuring code is never split mid-statement
+- Continuation chunks include the function header so retrieval always sees a valid `def`/`class` context, even for part 2+ of a split chunk
+- Chunking params are now configurable from `backend/config.py` without editing source code

@@ -54,6 +54,11 @@ VECTOR_STORE_DIR = os.path.join(PROJECT_ROOT, "vector_store")
 # SQLite chunk store (replaces chunks.json for large repos)
 CHUNK_DB_PATH = os.path.join(VECTOR_STORE_DIR, "chunks.db")
 
+# Chunking
+CHUNK_MAX_LINES = 150
+CHUNK_OVERLAP_LINES = 3
+CHUNK_MIN_CHARS = 10
+
 # AST Parsing
 USE_AST_PYTHON = True
 USE_AST_JS = False
