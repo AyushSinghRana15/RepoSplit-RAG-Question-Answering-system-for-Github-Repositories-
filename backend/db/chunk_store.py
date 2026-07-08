@@ -167,6 +167,43 @@ def clear_db():
         conn.commit()
 
 
+def get_repo_structure() -> dict:
+    """Build a tree of files with their functions/classes and docstrings from chunks."""
+    with closing(get_connection()) as conn:
+        try:
+            conn.execute("SELECT 1 FROM chunks LIMIT 1").fetchone()
+        except Exception:
+            return {"files": {}, "total_files": 0}
+        rows = conn.execute(
+            "SELECT DISTINCT file_path FROM chunks ORDER BY file_path"
+        ).fetchall()
+        file_paths = [r["file_path"] for r in rows]
+
+        files = {}
+        for fp in file_paths:
+            funcs = conn.execute(
+                "SELECT name, chunk_type, start_line, end_line, docstring, is_async "
+                "FROM chunks WHERE file_path = ? AND chunk_type IN ('function', 'class') "
+                "ORDER BY start_line",
+                (fp,),
+            ).fetchall()
+            items = []
+            for f in funcs:
+                entry = {
+                    "name": f["name"],
+                    "type": f["chunk_type"],
+                    "start_line": f["start_line"],
+                    "end_line": f["end_line"],
+                    "docstring": f["docstring"],
+                }
+                if f["is_async"]:
+                    entry["is_async"] = True
+                items.append(entry)
+            files[fp] = items
+
+        return {"files": files, "total_files": len(file_paths)}
+
+
 def get_chunk_iterator_for_embedding(batch_size: int = 1000) -> Generator:
     """Yield (chunk_id, embed_text) tuples for embedding pipeline."""
     with closing(get_connection()) as conn:

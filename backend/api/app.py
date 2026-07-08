@@ -568,6 +568,17 @@ def ask_endpoint(
     return result
 
 
+# Repository structure endpoint — returns file tree with functions/classes and docstrings
+@app.get("/ingest/repo-structure")
+def repo_structure():
+    from db.chunk_store import get_repo_structure
+    try:
+        return get_repo_structure()
+    except Exception as e:
+        logger.error(f"Failed to get repo structure: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get repo structure: {str(e)}")
+
+
 # Vector store statistics endpoint
 @app.get("/stats")
 def stats():

@@ -14,7 +14,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useVoiceAssistant, VoiceState } from "@/hooks/useVoiceAssistant";
 import { getSupabase } from "@/lib/supabase";
 import { parseVoiceAddRepo } from "@/lib/voice-add-repo";
-import { AudioLines, Bot, Loader2, Mic, Square, User, Volume2, LogIn } from "lucide-react";
+import { AudioLines, Bot, Loader2, Mic, Square, User, Volume2, LogIn, Map } from "lucide-react";
+import { RepoMap } from "@/components/RepoMap";
 import { useEffect, useCallback, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -168,6 +169,13 @@ export default function Home() {
   // Status message shown during voice-triggered repo ingestion
   const [voiceIngestStatus, setVoiceIngestStatus] = useState<string | null>(null);
 
+  // Repository map visibility
+  const [showRepoMap, setShowRepoMap] = useState(false);
+
+  const handleIngestComplete = useCallback(() => {
+    setShowRepoMap(true);
+  }, []);
+
   // Handle voice query — detects "add repo" commands or submits as normal query
   const handleVoiceQuery = useCallback(async (voiceQuery: string) => {
     const addRepo = parseVoiceAddRepo(voiceQuery);
@@ -305,7 +313,27 @@ export default function Home() {
       <div className="flex flex-1 justify-center">
         <div className="flex min-h-[calc(100vh-3.5rem)] w-full max-w-4xl flex-col px-4 sm:px-6">
           <div className="flex-1 space-y-6 py-6 sm:py-8">
-            <GitHubIngestor />
+            <GitHubIngestor onIngestComplete={handleIngestComplete} />
+
+            {showRepoMap && (
+              <RepoMap
+                visible={showRepoMap}
+                onClose={() => setShowRepoMap(false)}
+              />
+            )}
+
+            {!showRepoMap && (
+              <div className="flex justify-center">
+                <button
+                  onClick={() => setShowRepoMap(true)}
+                  className="group inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs transition-all hover:opacity-80"
+                  style={{ borderColor: "var(--border-subtle)", background: "var(--bg-card)", color: "var(--text-muted)" }}
+                >
+                  <Map className="h-3.5 w-3.5 text-[#8b5cf6]" />
+                  <span>View Repository Map</span>
+                </button>
+              </div>
+            )}
 
             <VoiceModeStatus
               voiceState={voiceState}
