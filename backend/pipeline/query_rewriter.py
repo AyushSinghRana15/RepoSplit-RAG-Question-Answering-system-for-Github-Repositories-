@@ -32,7 +32,7 @@ def rewrite_query(query: str, use_llm: bool = False) -> str:
             if api_key:
                 client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
                 resp = client.chat.completions.create(
-                    model="openai/gpt-oss-120b:free",
+                    model="qwen/qwen3-coder:free",
                     messages=[
                         {"role": "system", "content": _REWRITE_SYSTEM},
                         {"role": "user", "content": query},

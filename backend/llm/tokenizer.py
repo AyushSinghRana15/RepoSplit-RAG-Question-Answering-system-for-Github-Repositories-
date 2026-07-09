@@ -5,7 +5,7 @@ from typing import Optional
 
 _ENCODING = None
 _MODEL_ENCODING = None
-_MODEL_NAME = "gpt-oss-120b"
+_MODEL_NAME = "qwen3-coder"
 
 
 # Get tiktoken encoding for the model, with fallback to o200k_base

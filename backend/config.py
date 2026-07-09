@@ -25,7 +25,7 @@ ENABLE_RERANKING = True
 ENABLE_LLM_REWRITE = True
 
 # LLM
-LLM_MODEL = "openai/gpt-oss-120b:free"
+LLM_MODEL = "qwen/qwen3-coder:free"
 LLM_TEMPERATURE = 0.2
 LLM_MAX_TOKENS = 2000
 LLM_TOP_P = 0.9
@@ -80,7 +80,7 @@ CONTEXT_MAX_ADDITIONS = 3
 
 # Self-Reflection
 ENABLE_REFLECTION = True
-REFLECTION_MODEL = "openai/gpt-oss-120b:free"
+REFLECTION_MODEL = "qwen/qwen3-coder:free"
 REFLECTION_MAX_TOKENS = 600
 REFLECTION_TEMPERATURE = 0.1
 
