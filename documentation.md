@@ -1059,7 +1059,7 @@ ADDITIONAL RULES:
 | `_get_client()` | 13-25 | Lazy-load OpenAI client (singleton) |
 | `generate_answer(query, results)` | 28-45 | Main LLM call with retries |
 
-**Model Used:** `openai/gpt-oss-120b:free` (via OpenRouter)
+**Model Used:** `openrouter/free` (via OpenRouter, auto-load-balanced)
 - **Base URL:** `https://openrouter.ai/api/v1`
 - **Temperature:** 0.2 (low creativity = fewer hallucinations)
 - **Max Tokens:** 800
@@ -1227,7 +1227,7 @@ CodeBase AI Assistant/
 
 **Why OpenRouter with free model?**
 - Cost: $0 for development and testing
-- Quality: gpt-oss-120b is capable for code reasoning
+- Quality: openrouter/free routes to capable models for code reasoning
 - Easy upgrade path: just change model name in `generator.py`
 
 **Why short-circuit empty results?**
@@ -1273,7 +1273,7 @@ CodeBase AI Assistant/
 | `SCORE_THRESHOLD` | `1.4` | L2 distance cutoff |
 | `RERANK_MODEL` | `"cross-encoder/ms-marco-MiniLM-L-6-v2"` | Reranker model |
 | `ENABLE_RERANKING` | `True` | Toggle reranking |
-| `LLM_MODEL` | `"openai/gpt-oss-120b:free"` | OpenRouter model |
+| `LLM_MODEL` | `"openrouter/free"` | OpenRouter model (auto-load-balanced) |
 | `LLM_TEMPERATURE` | `0.2` | Low creativity |
 | `CACHE_MAX_SIZE` | `200` | lru_cache size |
 
@@ -1723,7 +1723,7 @@ python3 eval/run_eval.py
 **Completed Steps:**
 1. ✅ Step 1: Codebase Ingestion + Chunking
 2. ✅ Step 2: Embeddings + Vector DB (FAISS)
-3. ✅ Step 3: LLM Integration (OpenRouter gpt-oss-120b:free)
+3. ✅ Step 3: LLM Integration (OpenRouter openrouter/free)
 4. ✅ Production Upgrade: Reranking, FastAPI, Validation, Eval Harness
 
 **Evaluation Score:** 17/20 (85.0%) — ✅ PASSED
@@ -2009,7 +2009,7 @@ pip install rank-bm25 ragas datasets langchain-openai
 **Completed Components:**
 1. ✅ Step 1: Codebase Ingestion + Chunking (AST-powered)
 2. ✅ Step 2: Embeddings + Vector DB (FAISS)
-3. ✅ Step 3: LLM Integration (OpenRouter gpt-oss-120b:free)
+3. ✅ Step 3: LLM Integration (OpenRouter openrouter/free)
 4. ✅ Production Upgrade: Reranking, FastAPI, Validation, Eval Harness (85%)
 5. ✅ Elite Upgrade: AST, Hybrid Retrieval, Multi-Hop, Self-Reflection (80%)
 
@@ -2475,7 +2475,7 @@ npm run dev
 **Completed Steps:**
 1. ✅ Step 1: Codebase Ingestion + Chunking (AST-powered)
 2. ✅ Step 2: Embeddings + Vector DB (FAISS)
-3. ✅ Step 3: LLM Integration (OpenRouter gpt-oss-120b:free)
+3. ✅ Step 3: LLM Integration (OpenRouter openrouter/free)
 4. ✅ Production Upgrade: Reranking, FastAPI, Validation, Eval Harness (85%)
 5. ✅ Elite Upgrade: AST, Hybrid Retrieval, Multi-Hop, Self-Reflection (80%)
 6. ✅ UI Fixes + Spell-Checker Corrections + Ingestion Improvements
@@ -2606,7 +2606,7 @@ CREATE TABLE user_repos (
 **Completed Steps:**
 1. ✅ Step 1: Codebase Ingestion + Chunking (AST-powered)
 2. ✅ Step 2: Embeddings + Vector DB (FAISS)
-3. ✅ Step 3: LLM Integration (OpenRouter gpt-oss-120b:free)
+3. ✅ Step 3: LLM Integration (OpenRouter openrouter/free)
 4. ✅ Production Upgrade: Reranking, FastAPI, Validation, Eval Harness (85%)
 5. ✅ Elite Upgrade: AST, Hybrid Retrieval, Multi-Hop, Self-Reflection (80%)
 6. ✅ UI Fixes + Spell-Checker Corrections + Ingestion Improvements

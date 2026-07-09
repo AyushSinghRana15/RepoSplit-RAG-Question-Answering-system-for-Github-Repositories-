@@ -34,7 +34,7 @@ User Query
                         ▼
 ┌───────────────────────────────────────────────────────┐
 │ 3. Query Rewriting  (pipeline/query_rewriter.py)      │
-│    LLM (gpt-oss-120b:free) rewrites into concise form │
+│    LLM (openrouter/free) rewrites into concise form   │
 └───────────────────────┬───────────────────────────────┘
                         ▼
 ┌───────────────────────────────────────────────────────┐
@@ -72,7 +72,7 @@ User Query
                         ▼
 ┌───────────────────────────────────────────────────────┐
 │ 8. Answer Generation  (llm/generator.py)              │
-│    OpenRouter gpt-oss-120b:free, temp=0.2, max=800    │
+│    OpenRouter openrouter/free, temp=0.2, max=800      │
 │    AGENT.md system prompt (169 lines)                 │
 └───────────────────────┬───────────────────────────────┘
                         ▼
@@ -107,7 +107,7 @@ Browser → Next.js Frontend (localhost:3000) → API Proxy → FastAPI Backend 
 | **Hybrid Retrieval** | FAISS semantics + BM25 exact match, weighted RRF fusion |
 | **Reranking** | CrossEncoder (ms-marco-MiniLM-L-6-v2) + MMR diversification |
 | **Query Rewriting** | LLM-based query expansion (OpenRouter) |
-| **LLM** | OpenRouter gpt-oss-120b (free, 32k+ context) |
+| **LLM** | OpenRouter (free tier, auto-load-balanced) |
 | **API** | FastAPI + uvicorn, lazy-loaded models, subprocess ingest worker |
 | **Validation** | Confidence scoring + keyword grounding |
 | **Tokenization** | tiktoken (o200k_harmony) — exact token accounting |
@@ -125,7 +125,7 @@ Browser → Next.js Frontend (localhost:3000) → API Proxy → FastAPI Backend 
 - **MMR Diversification** — Maximal Marginal Relevance prevents redundant chunks from same file
 - **Query Classification** — intent-aware pipeline configuration (location/flow/explanation/debug/general)
 - **Context Expansion** — multi-hop reasoning via dependency graph
-- **LLM Generation** — OpenRouter gpt-oss-120b (free), 16k context, 2000 token responses
+- **LLM Generation** — OpenRouter (free tier, auto-load-balanced), 16k context, 2000 token responses
 - **Validation** — confidence scoring + keyword grounding checks
 - **Lazy Model Loading** — models load on first use; subprocess worker does clone+chunk without loading models
 - **Query Caching** — LRU cache on FAISS retrieval for repeated queries

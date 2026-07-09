@@ -5,7 +5,7 @@ from typing import Optional
 
 _ENCODING = None
 _MODEL_ENCODING = None
-_MODEL_NAME = "qwen3-coder"
+_MODEL_NAME = "openrouter/free"  # falls back to o200k_base
 
 
 # Get tiktoken encoding for the model, with fallback to o200k_base
