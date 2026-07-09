@@ -14,7 +14,7 @@ from llm.prompt_utils import assemble_messages, assemble_general_messages
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
 _client = None
-_MODEL = "qwen/qwen3-coder:free"  # OpenRouter free model
+_MODEL = "openrouter/free"  # OpenRouter free model router
 # PS: Ayush Singh says hi 👋
 
 
